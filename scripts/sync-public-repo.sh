@@ -51,14 +51,10 @@ gh repo clone "$PUBLIC_REPO" "$WORK_DIR/repo" -- --quiet
 cd "$WORK_DIR/repo"
 
 echo "→ Mirroring $SOURCE_DIR → ."
-rsync -av --delete --exclude='.git' --exclude='docs/screenshots/*' --exclude='!docs/screenshots/README.md' \
-    "$SOURCE_DIR/" ./
-
-# Restore screenshots that may already exist in the public repo if we removed them above
-# (rsync --delete plus excludes is fiddly; just re-pull any png from origin)
-if git ls-tree -r HEAD --name-only | grep -E '^docs/screenshots/.*\.(png|jpg|jpeg|gif)$' >/dev/null; then
-    git checkout HEAD -- 'docs/screenshots/*.png' 'docs/screenshots/*.jpg' 'docs/screenshots/*.jpeg' 'docs/screenshots/*.gif' 2>/dev/null || true
-fi
+# Pure upsert: copy everything from public-repo/ on top of the clone.
+# We intentionally do NOT use --delete so that screenshots committed via the
+# GitHub web UI (or any other extra files) are preserved.
+rsync -av --exclude='.git' "$SOURCE_DIR/" ./
 
 git add -A
 if git diff --cached --quiet; then
