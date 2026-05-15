@@ -1,0 +1,93 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the form below.
+
+  - type: input
+    id: lingopop-version
+    attributes:
+      label: LingoPop version
+      description: From Settings → About, or the filename you downloaded.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "Sequoia 15.2 / Sonoma 14.5 / Ventura 13.6 ..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Mac architecture
+      options:
+        - Apple Silicon (M1/M2/M3/M4)
+        - Intel
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider you were using
+      options:
+        - Claude
+        - OpenAI
+        - Gemini
+        - Google (Free)
+        - Google Translate
+        - Multiple / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation
+      options:
+        - Translate
+        - Fix grammar
+        - Rewrite
+        - Other / N/A
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you see instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select text ...
+        3. Press ...
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: |
+        You can get app logs with:
+        ```
+        log show --predicate 'subsystem == "com.lingopop.app"' --info --debug --last 5m
+        ```
+      render: shell

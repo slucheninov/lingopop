@@ -73,13 +73,19 @@ The minimum macOS is set in two places (must match): `MACOSX_DEPLOYMENT_TARGET` 
 
 ### Public releases via GitHub Actions
 
-Source lives in a **private** repo; built `.app` artifacts ship from a separate **public** repo. Tag push (`v0.2.0`) in private → `.github/workflows/release.yml` builds on `macos-14`, runs `scripts/release.sh`, then uses a fine-grained PAT to `gh release create` in the public repo. CI signs ad-hoc (no Apple Developer Program), so end users get a one-time Gatekeeper warning.
+Source lives in a **private** repo (`slucheninov/lingo-pop`); built `.app` artifacts and product docs ship from a separate **public** repo (`slucheninov/lingopop`).
+
+Two flows:
+- **Tag push** (`v0.2.0`) in private → `.github/workflows/release.yml` builds on `macos-14`, runs `scripts/release.sh`, then uses a fine-grained PAT to `gh release create` in the public repo. CI signs ad-hoc (no Apple Developer Program), so end users get a one-time Gatekeeper warning.
+- **Doc sync** (manual) — `./scripts/sync-public-repo.sh` clones the public repo, rsyncs `public-repo/` into it (preserving any screenshot binaries already committed there), commits, and pushes. Run this whenever README / CHANGELOG / issue templates change.
+
+The public repo's content (README, LICENSE, PRIVACY, CHANGELOG, issue templates, screenshots placeholder) lives under `public-repo/` here — that's the source of truth, the public repo is downstream.
 
 Configuration:
 - Private repo secret `PUBLIC_REPO_TOKEN` — fine-grained PAT with `Contents: Read and write` on the public repo only.
 - Private repo variable `PUBLIC_REPO` — `owner/repo` of the public repo.
 
-End-to-end setup is in `RELEASING.md`. Template for the public repo's README is `PUBLIC_README_TEMPLATE.md`.
+End-to-end setup is in `RELEASING.md`.
 
 ## Architecture
 

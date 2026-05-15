@@ -1,6 +1,32 @@
 # Releasing LingoPop
 
-This document is for the maintainer. End-user install instructions live in the **public** repo's README (see `PUBLIC_README_TEMPLATE.md`).
+This document is for the maintainer. End-user install instructions and the public repo's README/docs live under `public-repo/` (source of truth) and are pushed to the public repo by `scripts/sync-public-repo.sh`.
+
+## Public repo content
+
+Everything that appears in the public repo lives under `public-repo/` in this private repo:
+
+```
+public-repo/
+├── README.md                       # Product page rendered on github.com/slucheninov/lingopop
+├── LICENSE                          # Binary-distribution license
+├── PRIVACY.md                       # Privacy policy
+├── CHANGELOG.md                     # Hand-maintained version history
+├── docs/
+│   └── screenshots/                 # PNGs referenced from README
+│       └── README.md                # Instructions for what to put here
+└── .github/
+    └── ISSUE_TEMPLATE/
+        ├── bug_report.yml           # Form-based bug template
+        ├── feature_request.yml
+        └── config.yml               # Disables blank issues, adds links
+```
+
+Source of truth is here in the private repo. The public repo is downstream:
+- **Binary artifacts** (.dmg, .zip) are pushed by the release workflow on tag push.
+- **Docs** (README, CHANGELOG, templates) are pushed by `scripts/sync-public-repo.sh` whenever you run it manually.
+
+Screenshots placed directly in the public repo's `docs/screenshots/` (e.g. via the web UI) are preserved by the sync script — it doesn't delete `.png/.jpg/.jpeg/.gif` files that aren't in `public-repo/docs/screenshots/`.
 
 ## Architecture
 
@@ -27,7 +53,15 @@ This document is for the maintainer. End-user install instructions live in the *
 
 ### 1. Create the public repo
 
-On GitHub, create a new repo (e.g. `username/lingopop-releases`) — public. Put a README there describing what LingoPop is and how to install (use `PUBLIC_README_TEMPLATE.md` as a starting point). No source code goes here.
+On GitHub, create a new public repo (e.g. `slucheninov/lingopop`). No source code goes here — only releases and product docs.
+
+Then push the contents of `public-repo/` (in this private repo) to it:
+
+```bash
+./scripts/sync-public-repo.sh "Initial public repo content"
+```
+
+Re-run that script whenever you change README / CHANGELOG / issue templates / privacy policy / etc. The script clones the public repo, mirrors `public-repo/` into it (preserves screenshot binaries in `docs/screenshots/`), commits, and pushes.
 
 ### 2. Create a Personal Access Token
 
@@ -53,7 +87,9 @@ In the **private** repo:
 
 - **Settings → Secrets and variables → Actions → Variables → New repository variable**
   - Name: `PUBLIC_REPO`
-  - Value: `owner/repo` of the public repo, e.g. `username/lingopop-releases`
+  - Value: `owner/repo` of the **public** repo, e.g. `slucheninov/lingopop`
+
+⚠️ Make sure this is the **public** repo, not the private source repo. If `PUBLIC_REPO` points at the source repo, the PAT (scoped only to the public repo) will hit HTTP 404 on `gh release create` because GitHub hides repos the token can't see.
 
 ### 4. Push the workflow + sources
 
@@ -107,7 +143,7 @@ We **do not have an Apple Developer Program membership**, so:
 
 - The CI signs ad-hoc (`codesign --sign -`). The resulting `.app` is **not notarized**.
 - macOS Gatekeeper will warn the first time a user opens it: *"LingoPop can't be opened because Apple cannot check it for malicious software."* The user must right-click → **Open** to bypass once, after which Gatekeeper remembers the decision.
-- The public repo README must document this. Use `PUBLIC_README_TEMPLATE.md`.
+- The public repo README (`public-repo/README.md`) documents this.
 
 If you later get an Apple Developer ID ($99/year), you can:
 
@@ -129,6 +165,7 @@ If you tag `v0.2.0` more than once you'll need to delete the existing release in
 - **"PUBLIC_REPO is not set"** — you skipped step 3. Add the variable.
 - **"PUBLIC_REPO_TOKEN is not set"** — same, add the secret.
 - **`gh release create` says "HTTP 403"** — the PAT doesn't have `Contents: Read and write` on the public repo, or it expired. Regenerate.
+- **`gh release create` says "HTTP 404: Not Found .../releases"** — the PAT doesn't see the repo it's trying to write to. Causes: `PUBLIC_REPO` points at the wrong repo (often the private source repo by mistake), the public repo doesn't exist, or the PAT was scoped to a different repo than the one in `PUBLIC_REPO`. Verify the public repo URL works in a browser, and that the PAT's "Only select repositories" list contains exactly that repo.
 - **`gh release create` says "release already exists"** — you've already shipped this tag. Delete the existing release in the public repo, or use a new tag.
 - **Build fails on the runner with codesign errors** — usually means `xattr -cr` step in `release.sh` missed something. Check the workflow log.
 - **`lipo -archs` only shows one arch** — `ONLY_ACTIVE_ARCH` got stuck. The script forces `NO`, but if you customize make sure it stays.
