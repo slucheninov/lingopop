@@ -1,9 +1,11 @@
-# LingoPop
+<p align="center">
+  <img src="docs/icon.png" alt="LingoPop" width="128" height="128"/>
+</p>
 
-> Native macOS menu-bar app: select text anywhere, press a hotkey, get an AI translation, grammar fix, or rewrite in a popup near your cursor.
+<h1 align="center">LingoPop</h1>
 
 <p align="center">
-  <img src="docs/screenshots/popup.png" alt="LingoPop popup" width="520"/>
+  Native macOS menu-bar app: select text anywhere, press a hotkey, get an AI translation, grammar fix, or rewrite in a popup near your cursor.
 </p>
 
 <p align="center">
@@ -12,6 +14,16 @@
   </a>
   <img src="https://img.shields.io/badge/macOS-13.0%2B-blue?style=for-the-badge" alt="macOS 13+"/>
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon%20%2B%20Intel-lightgrey?style=for-the-badge" alt="Universal"/>
+</p>
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/popup.png" alt="Translation popup" width="800"/>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/menu.png" alt="Menu-bar dropdown" width="800"/>
 </p>
 
 ## Features
@@ -59,10 +71,6 @@ When in doubt, take the universal build.
 ## Setup
 
 After first launch, click the LingoPop icon in the menu bar → **Settings**.
-
-<p align="center">
-  <img src="docs/screenshots/settings.png" alt="LingoPop settings" width="720"/>
-</p>
 
 - **Main** — pick target language (or enable Auto-detect with language pairs), tune the character limit and history size, toggle Launch at login.
 - **Providers** — pick at least one provider and paste an API key. You can store keys for multiple providers and switch between them. Each provider has its own fallback.
