@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.2.0). Leave blank to read from project.yml.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14   # Apple Silicon — xcodebuild cross-compiles to x86_64 for universal
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "Could not resolve a version" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - name: Build universal release
+        run: ./scripts/release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Verify artifacts
+        run: |
+          ls -lh dist/
+          lipo -archs "/tmp/lingo-pop-release/Build/Products/Release/LingoPop.app/Contents/MacOS/LingoPop"
+
+      - name: Upload workflow artifacts (debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingopop-${{ steps.version.outputs.version }}
+          path: dist/*
+          retention-days: 7
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || echo "")
+          {
+            echo "## LingoPop v${VERSION}"
+            echo ""
+            if [[ -n "$PREV_TAG" ]]; then
+              echo "### Changes since $PREV_TAG"
+              git log --pretty=format:'- %s' "${PREV_TAG}..v${VERSION}" 2>/dev/null || true
+            else
+              echo "Initial release."
+            fi
+            echo ""
+            echo ""
+            echo "### Install"
+            echo ""
+            echo "1. Download \`LingoPop-${VERSION}-mac-universal.dmg\` (Universal, both Apple Silicon and Intel)."
+            echo "2. Open the dmg and drag LingoPop to Applications."
+            echo "3. First launch: right-click LingoPop.app → **Open** (the app is ad-hoc signed, Gatekeeper will warn once)."
+            echo "4. Grant Accessibility access when prompted (Settings → Privacy & Security → Accessibility)."
+            echo ""
+            echo "Need Intel- or arm64-only builds? They are attached separately."
+          } > release_notes.md
+          cat release_notes.md
+
+      - name: Publish release in public repo
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          PUBLIC_REPO: ${{ vars.PUBLIC_REPO }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ -z "$PUBLIC_REPO" ]]; then
+            echo "::error::Repository variable PUBLIC_REPO is not set (e.g. owner/repo)."
+            exit 1
+          fi
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::Secret PUBLIC_REPO_TOKEN is not set."
+            exit 1
+          fi
+
+          gh release create "v${VERSION}" \
+            --repo "$PUBLIC_REPO" \
+            --title "LingoPop v${VERSION}" \
+            --notes-file release_notes.md \
+            "dist/LingoPop-${VERSION}-mac-universal.dmg" \
+            "dist/LingoPop-${VERSION}-mac-universal.zip"
