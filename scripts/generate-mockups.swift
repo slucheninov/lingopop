@@ -149,7 +149,7 @@ let popupImage = NSImage(size: popupCanvas, flipped: false) { rect in
 
     // Translated text
     let bodyFont = NSFont.systemFont(ofSize: 13 * scale, weight: .regular)
-    let bodyText = "Висока затримка запит Loki"
+    let bodyText = "Дякую за швидку відповідь, передам команді."
     drawText(bodyText, at: NSPoint(x: popupRect.minX + pad, y: popupRect.minY + pad + 6 * scale), font: bodyFont, color: primaryColor)
 
     // Caption below
