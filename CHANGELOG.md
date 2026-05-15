@@ -1,0 +1,20 @@
+# Changelog
+
+All notable changes to LingoPop are documented here. Each release also has auto-generated notes on the [Releases page](https://github.com/slucheninov/lingopop/releases).
+
+The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] — Initial public release
+
+### Added
+- Three AI operations: **Translate**, **Fix grammar**, **Rewrite**, each with its own configurable global hotkey
+- Five providers: Claude, OpenAI, Gemini, Google (Free), Google Translate (Cloud)
+- Per-provider fallback that triggers on rate-limit / server / network errors
+- Auto-detect input language with configurable language pairs (e.g. Russian → Ukrainian, English → Ukrainian)
+- Popup actions: Copy, Replace (paste back into the source app), Retry with another provider
+- Translation history with configurable size limit (0–100 entries)
+- Settings + history sync via iCloud Drive between Macs (opt-in by default when iCloud Drive is available)
+- API keys stored locally in an AES-GCM encrypted file, machine-bound, never synced
+- Universal binary (Apple Silicon + Intel)
