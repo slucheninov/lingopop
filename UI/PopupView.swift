@@ -6,12 +6,14 @@ struct PopupView: View {
     @ObservedObject var state: PopupState
     var onClose: () -> Void
 
+    @AppStorage("LingoPop.popupFontSize") private var popupFontSize: Double = 13
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             content
         }
         .padding(14)
-        .frame(width: 360, alignment: .topLeading)
+        .frame(width: dynamicWidth, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.regularMaterial)
@@ -44,10 +46,10 @@ struct PopupView: View {
             HStack(spacing: 6) {
                 HStack(spacing: 4) {
                     Image(systemName: result.operation.systemImage)
-                        .font(.system(size: 10))
+                        .font(.system(size: headerFontSize, weight: .semibold))
                     if result.operation == .translate {
                         Text("\(result.provider.rawValue) →")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: headerFontSize, weight: .semibold))
                         Menu {
                             ForEach(languageOptions(current: result.targetLanguage), id: \.self) { lang in
                                 Button {
@@ -63,35 +65,35 @@ struct PopupView: View {
                         } label: {
                             HStack(spacing: 2) {
                                 Text(result.targetLanguage)
+                                    .font(.system(size: headerFontSize, weight: .semibold))
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 7, weight: .semibold))
+                                    .font(.system(size: max(6, headerFontSize - 2), weight: .semibold))
                             }
-                            .font(.system(size: 10, weight: .semibold))
                         }
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
                     } else {
                         Text(result.provider.rawValue)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: headerFontSize, weight: .semibold))
                     }
                 }
                 .foregroundStyle(.secondary)
                 if result.viaFallback {
                     Text("fallback")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: max(7, headerFontSize - 1), weight: .semibold))
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color.orange.opacity(0.2)))
                         .foregroundStyle(.orange)
                 }
                 Spacer(minLength: 0)
                 Button(action: { copy(result.translated) }) {
-                    Label("Copy", systemImage: "doc.on.doc").font(.system(size: 10))
+                    Label("Copy", systemImage: "doc.on.doc").font(.system(size: headerFontSize))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 Button(action: { state.onReplace?(result.translated) }) {
-                    Label("Replace", systemImage: "arrow.uturn.left").font(.system(size: 10))
+                    Label("Replace", systemImage: "arrow.uturn.left").font(.system(size: headerFontSize))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -104,7 +106,7 @@ struct PopupView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 10))
+                            .font(.system(size: headerFontSize))
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
@@ -113,7 +115,7 @@ struct PopupView: View {
                 }
             }
             Text(result.translated)
-                .font(.system(size: 13))
+                .font(.system(size: CGFloat(popupFontSize)))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         case .error(let message):
@@ -129,6 +131,17 @@ struct PopupView: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var headerFontSize: CGFloat { max(8, CGFloat(popupFontSize) - 2) }
+
+    private var dynamicWidth: CGFloat {
+        // Minimum must fit the header row; scales with header font size
+        let minW = max(320, headerFontSize * 30)
+        guard case .result(let result) = state.phase else { return minW }
+        let chars = CGFloat(result.translated.count)
+        let fontFactor = CGFloat(popupFontSize) / 13.0
+        return min(700, max(minW, 200 + chars * fontFactor))
     }
 
     private func copy(_ text: String) {

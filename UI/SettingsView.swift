@@ -26,6 +26,7 @@ private struct MainSettingsTab: View {
 
     @ObservedObject var store: SettingsStore
     @State private var accessibilityGranted: Bool = PermissionsManager.isAccessibilityGranted()
+    @AppStorage("LingoPop.popupFontSize") private var popupFontSize: Double = 13
 
     var body: some View {
         Form {
@@ -41,6 +42,23 @@ private struct MainSettingsTab: View {
                 }
                 if store.useAutoDetect {
                     LanguagePairsEditor(pairs: $store.languagePairs)
+                }
+            }
+
+            Section("Popup") {
+                LabeledContent("Result font size") {
+                    HStack(spacing: 8) {
+                        Image(systemName: "textformat.size.smaller")
+                            .foregroundStyle(.secondary)
+                        Slider(value: $popupFontSize, in: 11...20, step: 1)
+                            .frame(width: 160)
+                        Image(systemName: "textformat.size.larger")
+                            .foregroundStyle(.secondary)
+                        Text("\(Int(popupFontSize)) pt")
+                            .font(.system(size: 12).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, alignment: .trailing)
+                    }
                 }
             }
 

@@ -144,7 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func rebuildMenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let recentEntries = Array(historyStore.entries.prefix(3))
+        let menuCount = min(settingsStore.maxHistoryCount, 10)
+        let recentEntries = Array(historyStore.entries.prefix(menuCount))
         if recentEntries.isEmpty {
             let placeholder = NSMenuItem(title: "No recent translations", action: nil, keyEquivalent: "")
             placeholder.isEnabled = false
@@ -488,15 +489,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
         let maxWidth: CGFloat = 270
         guard (text as NSString).size(withAttributes: attrs).width > maxWidth else { return text }
-        var truncated = text
-        while truncated.count > 1 {
-            truncated = String(truncated.dropLast())
-            let candidate = truncated + "…"
+        let chars = Array(text)
+        var lo = 0, hi = chars.count
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            let candidate = String(chars.prefix(mid)) + "…"
             if (candidate as NSString).size(withAttributes: attrs).width <= maxWidth {
-                return candidate
+                lo = mid
+            } else {
+                hi = mid - 1
             }
         }
-        return "…"
+        return lo == 0 ? "…" : String(chars.prefix(lo)) + "…"
     }
 
     @objc private func quitAction() {

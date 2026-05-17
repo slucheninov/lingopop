@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -7,6 +8,7 @@ final class PopupWindow {
     private var panel: NSPanel?
     private var clickMonitor: Any?
     private var keyMonitor: Any?
+    private var phaseCancellable: AnyCancellable?
     let state = PopupState()
 
     func show(near point: NSPoint) {
@@ -71,7 +73,25 @@ final class PopupWindow {
         ])
         panel.contentView = container
 
+        phaseCancellable = state.$phase
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.resizeToFit() }
+            }
+
         return panel
+    }
+
+    private func resizeToFit() {
+        guard let panel, panel.isVisible,
+              let newSize = panel.contentView?.fittingSize,
+              newSize != panel.frame.size else { return }
+        var frame = panel.frame
+        let dy = newSize.height - frame.size.height
+        frame.origin.y -= dy
+        frame.size = newSize
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     private func position(_ panel: NSPanel, near point: NSPoint) {
