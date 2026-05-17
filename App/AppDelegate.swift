@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         popup.state.onReplace = { [weak self] text in
             self?.replaceSelectedText(with: text)
         }
+        popup.state.onRetranslate = { [weak self] language in
+            self?.retranslateWith(language)
+        }
     }
 
     private var lastCapturedText: String?
@@ -368,6 +371,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 targetLanguage: target,
                 primary: provider,
                 allowFallback: false
+            )
+        }
+    }
+
+    private func retranslateWith(_ targetLanguage: String) {
+        guard let text = lastCapturedText,
+              let cursor = lastCursorPosition else { return }
+        lastTargetLanguage = targetLanguage
+        Task { @MainActor in
+            await self.runOperation(
+                operation: .translate,
+                text: text,
+                cursorPosition: cursor,
+                detectedSource: self.lastDetectedSource,
+                targetLanguage: targetLanguage,
+                primary: self.settingsStore.activeProvider,
+                allowFallback: true
             )
         }
     }

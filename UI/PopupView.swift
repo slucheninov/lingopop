@@ -42,11 +42,39 @@ struct PopupView: View {
             }
         case .result(let result):
             HStack(spacing: 6) {
-                Label {
-                    Text("\(result.provider.rawValue)\(result.operation == .translate ? " → " + result.targetLanguage : "")")
-                        .font(.system(size: 10, weight: .semibold))
-                } icon: {
-                    Image(systemName: result.operation.systemImage).font(.system(size: 10))
+                HStack(spacing: 4) {
+                    Image(systemName: result.operation.systemImage)
+                        .font(.system(size: 10))
+                    if result.operation == .translate {
+                        Text("\(result.provider.rawValue) →")
+                            .font(.system(size: 10, weight: .semibold))
+                        Menu {
+                            ForEach(languageOptions(current: result.targetLanguage), id: \.self) { lang in
+                                Button {
+                                    state.onRetranslate?(lang)
+                                } label: {
+                                    if lang == result.targetLanguage {
+                                        Label(lang, systemImage: "checkmark")
+                                    } else {
+                                        Text(lang)
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 2) {
+                                Text(result.targetLanguage)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 7, weight: .semibold))
+                            }
+                            .font(.system(size: 10, weight: .semibold))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                    } else {
+                        Text(result.provider.rawValue)
+                            .font(.system(size: 10, weight: .semibold))
+                    }
                 }
                 .foregroundStyle(.secondary)
                 if result.viaFallback {
@@ -106,5 +134,13 @@ struct PopupView: View {
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func languageOptions(current: String) -> [String] {
+        var list = Languages.quickList
+        if !list.contains(current) {
+            list.insert(current, at: 0)
+        }
+        return list
     }
 }

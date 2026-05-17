@@ -14,6 +14,7 @@ final class PopupState: ObservableObject {
     @Published var availableRetryProviders: [ProviderType] = []
     var onRetry: ((ProviderType) -> Void)?
     var onReplace: ((String) -> Void)?
+    var onRetranslate: ((String) -> Void)?
 
     func setLoading(original: String) {
         phase = .loading(originalPreview: String(original.prefix(120)))
