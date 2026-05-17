@@ -6,6 +6,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+## v0.2.3 — 2026-05-17 Implement retranslation feature in PopupView and PopupState, allowing users to select a target language for translations; enhance AppDelegate to handle retranslation logic.
+
 ## v0.2.2 — 2026-05-17 Update project versioning to 0.2.2; refactor use dynamic versioning.
 
 ## [0.1.0] — Initial public release
