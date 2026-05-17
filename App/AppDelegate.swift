@@ -140,19 +140,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildMenu(_ menu: NSMenu) {
         menu.removeAllItems()
-        let granted = PermissionsManager.isAccessibilityGranted()
 
-        let statusItem = NSMenuItem(
-            title: granted ? "Accessibility: granted ✓" : "Accessibility: not granted ✗",
-            action: nil,
-            keyEquivalent: ""
-        )
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
-
-        if !granted {
-            menu.addItem(NSMenuItem(title: "Grant Accessibility…", action: #selector(requestAccessibilityAction), keyEquivalent: ""))
-            menu.addItem(NSMenuItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettingsAction), keyEquivalent: ""))
+        let recentEntries = Array(historyStore.entries.prefix(3))
+        if recentEntries.isEmpty {
+            let placeholder = NSMenuItem(title: "No recent translations", action: nil, keyEquivalent: "")
+            placeholder.isEnabled = false
+            menu.addItem(placeholder)
+        } else {
+            for entry in recentEntries {
+                let fullText = historyMenuText(entry)
+                let item = NSMenuItem(title: truncatedMenuText(fullText), action: #selector(copyHistoryItemAction(_:)), keyEquivalent: "")
+                item.toolTip = fullText
+                item.representedObject = entry.translated
+                menu.addItem(item)
+            }
         }
         menu.addItem(NSMenuItem.separator())
 
@@ -450,12 +451,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         historyWindow.show()
     }
 
-    @objc private func requestAccessibilityAction() {
-        PermissionsManager.requestAccessibility()
+    @objc private func copyHistoryItemAction(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
-    @objc private func openAccessibilitySettingsAction() {
-        PermissionsManager.openAccessibilitySettings()
+    private func historyMenuText(_ entry: TranslationHistoryEntry) -> String {
+        let original = entry.original.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
+        let translated = entry.translated.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
+        return "\(original) → \(translated)"
+    }
+
+    private func truncatedMenuText(_ text: String) -> String {
+        let font = NSFont.menuFont(ofSize: 0)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let maxWidth: CGFloat = 270
+        guard (text as NSString).size(withAttributes: attrs).width > maxWidth else { return text }
+        var truncated = text
+        while truncated.count > 1 {
+            truncated = String(truncated.dropLast())
+            let candidate = truncated + "…"
+            if (candidate as NSString).size(withAttributes: attrs).width <= maxWidth {
+                return candidate
+            }
+        }
+        return "…"
     }
 
     @objc private func quitAction() {

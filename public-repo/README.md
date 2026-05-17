@@ -23,7 +23,21 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/menu.png" alt="Menu-bar dropdown" width="800"/>
+  <img src="docs/screenshots/menu.png" alt="Menu-bar dropdown" width="500"/>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings-main.png" alt="Settings – Main tab" width="600"/>
+  &nbsp;
+  <img src="docs/screenshots/settings-providers.png" alt="Settings – Providers tab" width="600"/>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings-shortcuts.png" alt="Settings – Shortcuts tab" width="800"/>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/history.png" alt="Translation history" width="600"/>
 </p>
 
 ## Features
@@ -35,7 +49,7 @@
 - 📋 Popup actions: **Copy**, **Replace** (pastes back into the source app), **Retry with another provider**
 - 🤖 Providers: **Claude**, **OpenAI**, **Gemini**, **Google Translate** (free public endpoint or official Cloud Translation v2)
 - 🔁 Per-provider fallback chains — falls back automatically on rate-limits, server errors, or network issues
-- 📜 Translation history (last N entries, configurable)
+- 📜 Translation history (last N entries, configurable) — recent translations also appear at the top of the menu for quick access
 - ☁️ Settings sync between Macs via iCloud Drive. API keys stay local, encrypted with AES-GCM
 
 ## Install
@@ -75,6 +89,8 @@ After first launch, click the LingoPop icon in the menu bar → **Settings**.
 - **Main** — pick target language (or enable Auto-detect with language pairs), tune the character limit and history size, toggle Launch at login.
 - **Providers** — pick at least one provider and paste an API key. You can store keys for multiple providers and switch between them. Each provider has its own fallback.
 - **Shortcuts** — assign global hotkeys to Translate, Fix grammar, and Rewrite.
+
+The menu-bar dropdown shows the 3 most recent translations at the top — click one to copy the result to the clipboard.
 
 To use: select text in any app → press your hotkey → popup appears near your cursor.
 

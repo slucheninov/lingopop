@@ -178,14 +178,16 @@ let menuImage = NSImage(size: menuCanvas, flipped: false) { rect in
 
     // ── Row data
     enum Row {
-        case header(String)
+        case recent(String)
         case operation(symbol: String, title: String, hotkey: String)
         case submenu(title: String)
         case command(title: String, key: String)
         case separator
     }
     let rows: [Row] = [
-        .header("Accessibility: granted ✓"),
+        .recent("звучит как реальный рабочий месседж…"),
+        .recent("Loki high request latency → Висока…"),
+        .recent("The translation pop over some sample…"),
         .separator,
         .operation(symbol: "globe", title: "Translate", hotkey: "⌥T"),
         .operation(symbol: "checkmark.seal", title: "Fix grammar", hotkey: "⌥G"),
@@ -233,7 +235,6 @@ let menuImage = NSImage(size: menuCanvas, flipped: false) { rect in
     // colors
     let primary = NSColor(srgbRed: 0.10, green: 0.10, blue: 0.14, alpha: 1.0)
     let secondary = NSColor(srgbRed: 0.45, green: 0.45, blue: 0.50, alpha: 1.0)
-    let disabled = NSColor(srgbRed: 0.55, green: 0.55, blue: 0.60, alpha: 1.0)
 
     let titleFont = NSFont.systemFont(ofSize: 13 * scale, weight: .regular)
     let shortcutFont = NSFont.systemFont(ofSize: 12 * scale, weight: .regular)
@@ -242,9 +243,9 @@ let menuImage = NSImage(size: menuCanvas, flipped: false) { rect in
     var y = menuRect.maxY - 8 * scale
     for r in rows {
         switch r {
-        case .header(let text):
+        case .recent(let text):
             y -= rowH
-            drawText(text, at: NSPoint(x: menuRect.minX + 24 * scale, y: y + 4 * scale), font: titleFont, color: disabled)
+            drawText(text, at: NSPoint(x: menuRect.minX + 24 * scale, y: y + 4 * scale), font: titleFont, color: primary)
         case .operation(let symbol, let title, let hotkey):
             y -= rowH
             drawSymbol(symbol, at: NSPoint(x: menuRect.minX + 14 * scale, y: y + 3 * scale), fontSize: 13 * scale, color: primary)
