@@ -86,17 +86,23 @@ struct PopupView: View {
                         .background(Capsule().fill(Color.orange.opacity(0.2)))
                         .foregroundStyle(.orange)
                 }
-                Spacer(minLength: 0)
+            }
+            Text(result.translated)
+                .font(.system(size: CGFloat(popupFontSize)))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
                 Button(action: { copy(result.translated) }) {
-                    Label("Copy", systemImage: "doc.on.doc").font(.system(size: headerFontSize))
+                    Label("Copy", systemImage: "doc.on.doc")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 Button(action: { state.onReplace?(result.translated) }) {
-                    Label("Replace", systemImage: "arrow.uturn.left").font(.system(size: headerFontSize))
+                    Label("Replace", systemImage: "arrow.uturn.left")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Spacer(minLength: 0)
                 if !state.availableRetryProviders.isEmpty {
                     Menu {
                         ForEach(state.availableRetryProviders, id: \.self) { provider in
@@ -105,19 +111,15 @@ struct PopupView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: headerFontSize))
+                        Label("Retry", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
-                    .foregroundStyle(.secondary)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
-            Text(result.translated)
-                .font(.system(size: CGFloat(popupFontSize)))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
         case .error(let message):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")

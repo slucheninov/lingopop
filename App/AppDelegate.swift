@@ -162,17 +162,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
 
         for operation in AIOperation.allCases {
-            let hk = settingsStore.hotkey(for: operation)
-            let suffix = (hk?.isEmpty == false) ? " (\(hk!.displayString))" : ""
             let item = NSMenuItem(
-                title: operation.displayName + suffix,
+                title: operation.displayName,
                 action: #selector(operationMenuAction(_:)),
                 keyEquivalent: ""
             )
+            if let hk = settingsStore.hotkey(for: operation), !hk.isEmpty, let key = hk.hotKeyKey {
+                item.keyEquivalent = String(describing: key).lowercased()
+                item.keyEquivalentModifierMask = hk.modifiers
+            }
             item.representedObject = operation.rawValue
             item.image = NSImage(systemSymbolName: operation.systemImage, accessibilityDescription: nil)
             menu.addItem(item)
         }
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(makeLanguageSubmenu())
         menu.addItem(NSMenuItem(title: "History…", action: #selector(historyAction), keyEquivalent: "h"))
         menu.addItem(NSMenuItem(title: "Settings…", action: #selector(settingsAction), keyEquivalent: ","))
