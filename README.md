@@ -42,15 +42,15 @@
 
 ## Features
 
-- 🌐 **Translate** to any target language. Optional auto-detect routes between configured language pairs (Russian ↔ Ukrainian, English → Ukrainian, etc.)
-- ✓ **Fix grammar** — clean spelling, punctuation, and grammar without changing the meaning or style
-- ✨ **Rewrite** — improve clarity and flow while keeping the original intent
-- ⌨️ Three separate global hotkeys (one per operation), fully customizable
+- 🌐 **Translate** to any target language. Optional auto-detect picks the target from your language pairs (defaults: Russian ↔ Ukrainian, English → Ukrainian); otherwise uses the default target
+- ✓ **Fix grammar** — spelling, punctuation, and grammar only; meaning and style stay the same
+- ✨ **Rewrite** — clearer wording in the same language; meaning and tone preserved
+- ⌨️ Three separate global hotkeys (one per operation). **Translate** ships with **⌥T**; Fix grammar and Rewrite are unset until you assign them
 - 📋 Popup actions: **Copy**, **Replace** (pastes back into the source app), **Retry with another provider**
-- 🤖 Providers: **Claude**, **OpenAI**, **Gemini**, **Google Translate** (free public endpoint or official Cloud Translation v2)
-- 🔁 Per-provider fallback chains — falls back automatically on rate-limits, server errors, or network issues
-- 📜 Translation history (last N entries, configurable) — recent translations also appear at the top of the menu for quick access
-- ☁️ Settings sync between Macs via iCloud Drive. API keys stay local, encrypted with AES-GCM
+- 🤖 Five providers: **Claude**, **OpenAI**, **Gemini** (all three operations), **Google (Free)** and **Google Translate** (translate only — unofficial public endpoint vs official Cloud Translation v2)
+- 🔁 Per-provider fallback — on 429, 5xx, or network errors, retries once with the fallback you pick for that provider
+- 📜 Translation history (0–100 entries, default 10). The three most recent results appear at the top of the menu-bar dropdown for one-click copy
+- ☁️ Settings and history sync via iCloud Drive when available (on by default). API keys stay on each Mac, encrypted with AES-GCM
 
 ## Install
 
@@ -84,25 +84,59 @@ When in doubt, take the universal build.
 
 ## Setup
 
-After first launch, click the LingoPop icon in the menu bar → **Settings**.
+After first launch, click the LingoPop icon in the menu bar → **Settings…** (or **⌘,**).
 
-- **Main** — pick target language (or enable Auto-detect with language pairs), tune the character limit and history size, toggle Launch at login.
-- **Providers** — pick at least one provider and paste an API key. You can store keys for multiple providers and switch between them. Each provider has its own fallback.
-- **Shortcuts** — assign global hotkeys to Translate, Fix grammar, and Rewrite.
+### Main
 
-The menu-bar dropdown shows the 3 most recent translations at the top — click one to copy the result to the clipboard.
+- **Target language** — choose a fixed target, or turn on **Auto-detect input language** and edit **language pairs** (source → target). Unmatched sources use the default target
+- **Limits** — **Max input characters** (default 5000) and **History size** (0–100, default 10)
+- **Startup** — **Launch at login**
+- **iCloud Drive sync** — sync settings and history between Macs on the same Apple ID (enabled when iCloud Drive is available). API keys are never synced
+- **Accessibility** — required to read selected text via simulated Copy. Grant access in System Settings, then fully quit and relaunch LingoPop
 
-To use: select text in any app → press your hotkey → popup appears near your cursor.
+### Providers
+
+Sidebar lists all five providers. The starred one is **active** (used for hotkeys and menu actions).
+
+Per provider:
+
+- **Set as active** — switch which provider runs your next operation
+- **API key** — required for Claude, OpenAI, Gemini, and Google Translate; **Google (Free)** needs no key
+- **Endpoint** / **Model** — defaults work out of the box; override base URL or model if needed
+- **HTTP Referer** — optional, only for **Google Translate** (for API keys restricted by HTTP referrer in Google Cloud Console)
+- **Fallback** — pick another provider to try once on rate-limit, server, or network errors
+
+Configure keys for several providers and switch the active one anytime. **Fix grammar** and **Rewrite** require Claude, OpenAI, or Gemini — Google providers are translate-only.
+
+Click **Save** on the detail pane after editing a provider.
+
+### Shortcuts
+
+Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrite**. Click the field, press a combination with **⌃ ⌥ ⇧ ⌘** plus a key; **Esc** cancels, **✕** clears.
+
+### About
+
+App version and a short overview.
+
+### Menu bar
+
+Besides **Settings…** and **History…**:
+
+- The top of the menu lists up to **three recent results** — click to copy
+- **Translate** / **Fix grammar** / **Rewrite** run the operation on the current selection (shortcut shown in parentheses when set)
+- **Target:** submenu — quick switch for the default target language
+
+**Workflow:** select text in any app → press your hotkey (or pick an operation from the menu) → popup appears near the cursor.
 
 ## Getting API keys
 
-| Provider | Where to get a key |
-|---|---|
-| Claude | [console.anthropic.com](https://console.anthropic.com/) |
-| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| Google Translate | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) — enable Cloud Translation API |
-| Google (Free) | No key needed — uses the public translate endpoint |
+| Provider in Settings | Operations | Key |
+|---|---|---|
+| Claude | Translate · Fix grammar · Rewrite | [console.anthropic.com](https://console.anthropic.com/) |
+| OpenAI | Translate · Fix grammar · Rewrite | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Gemini | Translate · Fix grammar · Rewrite | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| Google Translate | Translate only | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) — enable Cloud Translation API |
+| Google (Free) | Translate only | No key — unofficial public endpoint |
 
 ## Why does macOS warn me about an unidentified developer?
 
@@ -113,7 +147,8 @@ If you'd rather not bypass Gatekeeper at all, build LingoPop from source (reques
 ## Requirements
 
 - macOS 13 (Ventura) or later
-- An API key for the AI provider you want to use (or use Google Free, which doesn't need one)
+- **Accessibility** permission (to capture selected text)
+- An API key for the active provider, unless you use **Google (Free)** or only need translate via a configured Google provider
 
 ## Privacy
 
