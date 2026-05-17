@@ -67,7 +67,7 @@ let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { r
     bubbleShine.draw(in: bubbleRect, angle: -90)
     ctx.restoreGState()
 
-    // ── Letters "A文" — Latin + CJK to evoke translation ──────────────
+    // ── Letters "AЇ" — Latin + Cyrillic to evoke translation ──────────
     let textColor = NSColor(srgbRed: 0.20, green: 0.10, blue: 0.55, alpha: 1.0)
     let fontSize: CGFloat = 380
     let font = NSFont.systemFont(ofSize: fontSize, weight: .bold)
@@ -76,7 +76,7 @@ let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { r
         .foregroundColor: textColor,
         .kern: -10
     ]
-    let text = NSAttributedString(string: "A文", attributes: attrs)
+    let text = NSAttributedString(string: "AЇ", attributes: attrs)
     let textSize = text.size()
     let textOrigin = NSPoint(
         x: bubbleRect.midX - textSize.width / 2,
@@ -84,16 +84,16 @@ let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { r
     )
     text.draw(at: textOrigin)
 
-    // Small arrow between letters to suggest translation
+    // Small arrow below letters to suggest translation
     let arrowColor = NSColor(srgbRed: 0.42, green: 0.20, blue: 0.95, alpha: 0.9)
     arrowColor.setFill()
-    let arrowY = bubbleRect.midY + 120
+    let arrowY = bubbleRect.midY - 210
     let arrowPath = NSBezierPath()
-    arrowPath.move(to: NSPoint(x: bubbleRect.midX - 70, y: arrowY))
-    arrowPath.line(to: NSPoint(x: bubbleRect.midX + 70, y: arrowY))
-    arrowPath.line(to: NSPoint(x: bubbleRect.midX + 50, y: arrowY + 25))
-    arrowPath.move(to: NSPoint(x: bubbleRect.midX + 70, y: arrowY))
-    arrowPath.line(to: NSPoint(x: bubbleRect.midX + 50, y: arrowY - 25))
+    arrowPath.move(to: NSPoint(x: bubbleRect.midX - 100, y: arrowY))
+    arrowPath.line(to: NSPoint(x: bubbleRect.midX + 100, y: arrowY))
+    arrowPath.line(to: NSPoint(x: bubbleRect.midX + 75, y: arrowY + 30))
+    arrowPath.move(to: NSPoint(x: bubbleRect.midX + 100, y: arrowY))
+    arrowPath.line(to: NSPoint(x: bubbleRect.midX + 75, y: arrowY - 30))
     arrowPath.lineWidth = 18
     arrowPath.lineCapStyle = .round
     arrowPath.lineJoinStyle = .round

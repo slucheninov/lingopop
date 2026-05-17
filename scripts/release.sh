@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$VERSION" ]]; then
-    VERSION=$(awk '/CFBundleShortVersionString:/ { gsub(/"/,"",$2); print $2 }' project.yml)
+    VERSION=$(awk '/MARKETING_VERSION:/ { gsub(/"/,"",$2); print $2 }' project.yml)
     if [[ -z "$VERSION" ]]; then VERSION="0.0.0"; fi
 fi
 

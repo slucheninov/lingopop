@@ -29,7 +29,9 @@ final class StatusItemController {
 
         switch state {
         case .idle:
-            setSymbol("globe", tint: nil)
+            guard let button = statusItem?.button else { break }
+            button.image = makeIdleImage()
+            button.contentTintColor = nil
         case .translating:
             startSpin()
         case .error:
@@ -40,6 +42,16 @@ final class StatusItemController {
                 if self.state == .error { self.apply(.idle) }
             }
         }
+    }
+
+    private func makeIdleImage() -> NSImage {
+        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let str = NSAttributedString(string: "AЇ", attributes: attrs)
+        let sz = str.size()
+        let image = NSImage(size: sz, flipped: false) { _ in str.draw(at: .zero); return true }
+        image.isTemplate = true
+        return image
     }
 
     private func setSymbol(_ name: String, tint: NSColor?) {

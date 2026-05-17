@@ -1,37 +1,37 @@
-# Releasing LingoPop
+# Випуск LingoPop
 
-This document is for the maintainer. End-user install instructions and the public repo's README/docs live under `public-repo/` (source of truth) and are pushed to the public repo by `scripts/sync-public-repo.sh`.
+Цей документ для мейнтейнера. Інструкції для кінцевого користувача та документація публічного репо живуть у `public-repo/` і публікуються скриптом `scripts/sync-public-repo.sh`.
 
-## Public repo content
+## Вміст публічного репо
 
-Everything that appears in the public repo lives under `public-repo/` in this private repo:
+Все що з'являється в публічному репо живе у `public-repo/` цього приватного репо:
 
 ```
 public-repo/
-├── README.md                       # Product page rendered on github.com/slucheninov/lingopop
-├── LICENSE                          # Binary-distribution license
-├── PRIVACY.md                       # Privacy policy
-├── CHANGELOG.md                     # Hand-maintained version history
+├── README.md                       # Сторінка продукту на github.com/slucheninov/lingopop
+├── LICENSE                         # Ліцензія на розповсюдження бінарників
+├── PRIVACY.md                      # Політика конфіденційності
+├── CHANGELOG.md                    # Історія версій (ведеться вручну)
 ├── docs/
-│   └── screenshots/                 # PNGs referenced from README
-│       └── README.md                # Instructions for what to put here
+│   └── screenshots/                # PNG-скріншоти з README
+│       └── README.md               # Інструкції що сюди класти
 └── .github/
     └── ISSUE_TEMPLATE/
-        ├── bug_report.yml           # Form-based bug template
+        ├── bug_report.yml          # Шаблон баг-репорту
         ├── feature_request.yml
-        └── config.yml               # Disables blank issues, adds links
+        └── config.yml              # Вимикає порожні issues, додає посилання
 ```
 
-Source of truth is here in the private repo. The public repo is downstream:
-- **Binary artifacts** (.dmg, .zip) are pushed by the release workflow on tag push.
-- **Docs** (README, CHANGELOG, templates) are pushed by `scripts/sync-public-repo.sh` whenever you run it manually.
+Джерело правди — тут, у приватному репо. Публічне репо — downstream:
+- **Бінарні артефакти** (.dmg, .zip) — публікує release workflow при пуші тегу.
+- **Документація** (README, CHANGELOG, шаблони) — публікує `scripts/sync-public-repo.sh` при ручному запуску.
 
-Screenshots placed directly in the public repo's `docs/screenshots/` (e.g. via the web UI) are preserved by the sync script — it doesn't delete `.png/.jpg/.jpeg/.gif` files that aren't in `public-repo/docs/screenshots/`.
+Скріншоти, додані напряму в публічне репо через веб-інтерфейс, sync-скрипт зберігає — він не видаляє `.png/.jpg/.jpeg/.gif` файли яких немає в `public-repo/docs/screenshots/`.
 
-## Architecture
+## Архітектура
 
 ```
-┌──────────────────────────┐       push tag v0.2.0        ┌──────────────────────────┐
+┌──────────────────────────┐       push tag v0.2.2        ┌──────────────────────────┐
 │   PRIVATE repo (source)  │ ──────────────────────────►  │  GitHub Actions          │
 │                          │                              │  macos-14 runner         │
 │   .github/workflows/     │                              │  • xcodegen + xcodebuild │
@@ -43,129 +43,175 @@ Screenshots placed directly in the public repo's `docs/screenshots/` (e.g. via t
                                                                        ▼
                                                           ┌──────────────────────────┐
                                                           │  PUBLIC repo (releases)  │
-                                                          │  Release v0.2.0          │
+                                                          │  Release v0.2.2          │
                                                           │  • LingoPop-...dmg       │
                                                           │  • LingoPop-...zip       │
                                                           └──────────────────────────┘
 ```
 
-## One-time GitHub setup
+## Одноразове налаштування GitHub
 
-### 1. Create the public repo
+### 1. Створити публічне репо
 
-On GitHub, create a new public repo (e.g. `slucheninov/lingopop`). No source code goes here — only releases and product docs.
+На GitHub створити нове публічне репо (наприклад `slucheninov/lingopop`). Вихідний код туди не йде — тільки релізи та документація продукту.
 
-Then push the contents of `public-repo/` (in this private repo) to it:
+Потім запушити вміст `public-repo/`:
 
 ```bash
 ./scripts/sync-public-repo.sh "Initial public repo content"
 ```
 
-Re-run that script whenever you change README / CHANGELOG / issue templates / privacy policy / etc. The script clones the public repo, mirrors `public-repo/` into it (preserves screenshot binaries in `docs/screenshots/`), commits, and pushes.
+Повторювати при кожній зміні README / CHANGELOG / шаблонів issues / тощо.
 
-### 2. Create a Personal Access Token
+### 2. Створити Personal Access Token
 
-The workflow needs a token that can write releases to the **public** repo from inside the **private** repo. Use a **fine-grained PAT** (most restrictive).
+Workflow потребує токен що може писати релізи в **публічне** репо з **приватного**. Використовувати **fine-grained PAT**.
 
-- Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)
+- Перейти на [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new)
 - **Token name:** `LingoPop release publisher`
-- **Expiration:** 1 year (or your preference; you'll need to rotate)
-- **Resource owner:** your account / org
-- **Repository access** → **Only select repositories** → pick the **public** repo only
+- **Expiration:** 1 рік (потрібно буде оновлювати)
+- **Resource owner:** ваш акаунт
+- **Repository access** → **Only select repositories** → вибрати тільки **публічне** репо
 - **Permissions** → **Repository permissions**:
-  - **Contents** → **Read and write** (needed for creating releases and uploading assets)
-  - **Metadata** → Read-only (auto-included)
-- Generate. Copy the token (`github_pat_...`). You'll paste it in step 3 — it's only shown once.
+  - **Contents** → **Read and write**
+  - **Metadata** → Read-only (додається автоматично)
+- Згенерувати. Скопіювати токен (`github_pat_...`) — показується тільки раз.
 
-### 3. Add the secret + variable to the private repo
+### 3. Додати секрет і змінну в приватне репо
 
-In the **private** repo:
+У **приватному** репо:
 
 - **Settings → Secrets and variables → Actions → Secrets → New repository secret**
   - Name: `PUBLIC_REPO_TOKEN`
-  - Value: the PAT from step 2
+  - Value: PAT з кроку 2
 
 - **Settings → Secrets and variables → Actions → Variables → New repository variable**
   - Name: `PUBLIC_REPO`
-  - Value: `owner/repo` of the **public** repo, e.g. `slucheninov/lingopop`
+  - Value: `owner/repo` публічного репо, наприклад `slucheninov/lingopop`
 
-⚠️ Make sure this is the **public** repo, not the private source repo. If `PUBLIC_REPO` points at the source repo, the PAT (scoped only to the public repo) will hit HTTP 404 on `gh release create` because GitHub hides repos the token can't see.
+⚠️ Переконатися що `PUBLIC_REPO` вказує на **публічне** репо, а не приватне. Якщо вказати приватне — PAT (обмежений тільки публічним репо) отримає HTTP 404 на `gh release create`.
 
-### 4. Push the workflow + sources
+### 4. Запушити workflow
 
-Make sure `.github/workflows/release.yml` is committed and pushed to the private repo. That's it for setup.
+Переконатися що `.github/workflows/release.yml` закомічений і запушений у приватне репо. Налаштування завершено.
 
-## Releasing a new version
+---
 
-From your dev machine:
+## Випуск нової версії
+
+Повний чеклист для випуску, наприклад `0.2.2`:
+
+### 1. Переконатися що гілка чиста
 
 ```bash
-# 1. Make sure HEAD is on main with everything you want shipped
 git pull
-git status   # should be clean
-
-# 2. Tag and push. Use semver, prefix with v.
-git tag v0.2.0
-git push origin v0.2.0
+git status   # має бути clean
 ```
 
-That's it. The tag push triggers `.github/workflows/release.yml`:
+### 2. Оновити версію в project.yml
 
-1. The macos-14 runner installs Xcode + xcodegen
-2. Runs `./scripts/release.sh 0.2.0` → produces `dist/LingoPop-0.2.0-mac-universal.{dmg,zip}`
-3. Generates release notes from git log since the previous tag
-4. Calls `gh release create v0.2.0 --repo $PUBLIC_REPO ...` with the artifacts
+У `project.yml` змінити `MARKETING_VERSION`:
 
-Within ~5 minutes the new release appears in the public repo.
+```yaml
+MARKETING_VERSION: "0.2.2"
+```
 
-## Manual trigger (without a tag)
+Це потрібно щоб дев-збірки (`./build.sh`) та вкладка About у застосунку показували правильну версію. CI бере версію з тегу, але `project.yml` має бути синхронізований.
 
-You can also fire a build manually from GitHub UI:
+### 3. Оновити CHANGELOG
 
-- **Actions → Release → Run workflow** → enter version → Run.
+У `public-repo/CHANGELOG.md` додати запис вгорі:
 
-This still creates a real release in the public repo, so use sparingly.
+```markdown
+## v0.2.2 — 2026-05-17
 
-## Local dry run
+- Що змінилось
+- Що полагодили
+```
 
-To preview what CI will produce, run the same script on your Mac:
+### 4. Закомітити і запушити
 
 ```bash
-./scripts/release.sh 0.2.0
-# inspects dist/LingoPop-0.2.0-mac-universal.{dmg,zip}
+git add project.yml public-repo/CHANGELOG.md
+git commit -m "Release v0.2.2"
+git push
 ```
 
-Local builds use your `LingoPop Dev` cert if present; CI builds are ad-hoc signed (no cert in the runner). Users get the same Gatekeeper "right-click → Open" experience either way.
+### 5. Поставити тег → запускає CI
 
-## Code signing — current state
+```bash
+git tag v0.2.2
+git push origin v0.2.2
+```
 
-We **do not have an Apple Developer Program membership**, so:
+CI (`.github/workflows/release.yml`) зробить все інше:
+1. Встановить Xcode + xcodegen на macos-14 раннері
+2. Запустить `./scripts/release.sh 0.2.2` → `dist/LingoPop-0.2.2-mac-universal.{dmg,zip}`
+3. Згенерує release notes з git log з попереднього тегу
+4. Створить реліз у публічному репо через `gh release create v0.2.2`
 
-- The CI signs ad-hoc (`codesign --sign -`). The resulting `.app` is **not notarized**.
-- macOS Gatekeeper will warn the first time a user opens it: *"LingoPop can't be opened because Apple cannot check it for malicious software."* The user must right-click → **Open** to bypass once, after which Gatekeeper remembers the decision.
-- The public repo README (`public-repo/README.md`) documents this.
+Через ~5 хвилин реліз з'явиться в публічному репо.
 
-If you later get an Apple Developer ID ($99/year), you can:
+### 6. Синхронізувати документацію (якщо змінювались README / скріншоти)
 
-1. Export the Developer ID Application cert as a p12.
-2. Add it as `MACOS_CERT_P12_BASE64` + `MACOS_CERT_PASSWORD` secrets.
-3. Update the workflow to import the cert into a temporary keychain and sign with it.
-4. Add a notarization step (`xcrun notarytool submit`) — needs Apple ID + app-specific password as secrets.
+```bash
+./scripts/sync-public-repo.sh "Update docs for v0.2.2"
+```
 
-That's a future change. For now: ad-hoc + clear install instructions.
+Скрипт клонує публічне репо, синхронізує `public-repo/` в нього (зберігаючи скріншоти), комітить і пушить.
 
-## Versioning
+---
 
-`scripts/release.sh` passes `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` to xcodebuild from the tag name (`v0.2.0` → `0.2.0`). You don't need to bump anything in `project.yml` before tagging — the version baked into the .app comes from the tag.
+## Локальний dry run
 
-If you tag `v0.2.0` more than once you'll need to delete the existing release in the public repo, since `gh release create` refuses to overwrite. Easier: use a new tag.
+Перед пушем тегу можна перевірити що CI збере:
 
-## Troubleshooting
+```bash
+./scripts/release.sh 0.2.2
+# перевірити dist/LingoPop-0.2.2-mac-universal.{dmg,zip}
+```
 
-- **"PUBLIC_REPO is not set"** — you skipped step 3. Add the variable.
-- **"PUBLIC_REPO_TOKEN is not set"** — same, add the secret.
-- **`gh release create` says "HTTP 403"** — the PAT doesn't have `Contents: Read and write` on the public repo, or it expired. Regenerate.
-- **`gh release create` says "HTTP 404: Not Found .../releases"** — the PAT doesn't see the repo it's trying to write to. Causes: `PUBLIC_REPO` points at the wrong repo (often the private source repo by mistake), the public repo doesn't exist, or the PAT was scoped to a different repo than the one in `PUBLIC_REPO`. Verify the public repo URL works in a browser, and that the PAT's "Only select repositories" list contains exactly that repo.
-- **`gh release create` says "release already exists"** — you've already shipped this tag. Delete the existing release in the public repo, or use a new tag.
-- **Build fails on the runner with codesign errors** — usually means `xattr -cr` step in `release.sh` missed something. Check the workflow log.
-- **`lipo -archs` only shows one arch** — `ONLY_ACTIVE_ARCH` got stuck. The script forces `NO`, but if you customize make sure it stays.
+Локальна збірка використовує сертифікат `LingoPop Dev` якщо він є в кейчейні; CI підписує ad-hoc. Поведінка для користувачів однакова.
+
+## Ручний запуск без тегу
+
+Можна запустити збірку вручну з GitHub UI:
+
+**Actions → Release → Run workflow** → ввести версію → Run.
+
+Створює справжній реліз у публічному репо — використовувати обережно.
+
+## Версіонування
+
+Версія живе в одному місці: `MARKETING_VERSION` у `project.yml`.
+
+- `./build.sh` → бере з `project.yml` (About у застосунку показує цю версію)
+- `./scripts/release.sh` без аргументу → читає з `project.yml` через awk
+- `./scripts/release.sh 0.2.2` → перекриває аргументом (CI використовує тег)
+- `Info.plist` → `CFBundleShortVersionString = $(MARKETING_VERSION)` (змінна збірки, не рядок)
+
+Якщо тег `v0.2.2` вже існує — потрібно спочатку видалити реліз у публічному репо, бо `gh release create` відмовляється перезаписувати. Простіше використати новий тег.
+
+## Підписання коду — поточний стан
+
+Членства в Apple Developer Program немає, тому:
+
+- CI підписує ad-hoc (`codesign --sign -`). Застосунок **не нотаризований**.
+- macOS Gatekeeper при першому запуску покаже попередження. Користувач має натиснути правою кнопкою → **Open** один раз, після чого Gatekeeper запам'ятає рішення.
+- README у публічному репо це документує.
+
+Якщо з'явиться Apple Developer ID ($99/рік):
+1. Експортувати Developer ID Application сертифікат як p12
+2. Додати `MACOS_CERT_P12_BASE64` + `MACOS_CERT_PASSWORD` у секрети репо
+3. Оновити workflow — імпорт сертифікату в тимчасовий кейчейн + підпис ним
+4. Додати крок нотаризації (`xcrun notarytool submit`) — потрібні Apple ID + app-specific password
+
+## Усунення проблем
+
+- **"PUBLIC_REPO is not set"** — пропустили крок 3. Додати змінну.
+- **"PUBLIC_REPO_TOKEN is not set"** — те саме, додати секрет.
+- **`gh release create` повертає "HTTP 403"** — PAT не має `Contents: Read and write` на публічному репо, або він прострочений. Перегенерувати.
+- **`gh release create` повертає "HTTP 404: Not Found .../releases"** — PAT не бачить репо. Причини: `PUBLIC_REPO` вказує не на те репо (часто приватне замість публічного), публічне репо не існує, або PAT обмежений іншим репо. Перевірити URL публічного репо в браузері і що список "Only select repositories" в PAT містить саме його.
+- **`gh release create` повертає "release already exists"** — цей тег вже використовувався. Видалити існуючий реліз у публічному репо або використати новий тег.
+- **Збірка на раннері падає з помилками codesign** — зазвичай крок `xattr -cr` у `release.sh` щось пропустив. Дивитись лог workflow.
+- **`lipo -archs` показує тільки одну архітектуру** — застряг `ONLY_ACTIVE_ARCH`. Скрипт примусово ставить `NO`, але якщо кастомізувати — переконатись що залишається.
