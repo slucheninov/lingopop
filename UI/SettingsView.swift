@@ -189,6 +189,7 @@ private struct ProviderSettingsTab: View {
             Divider()
             ProviderDetailView(store: store, providerImpls: providerImpls, provider: selected)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .id(selected)
         }
         .onAppear { selected = store.activeProvider }
     }
@@ -401,7 +402,6 @@ private struct ProviderDetailView: View {
         }
         .formStyle(.grouped)
         .onAppear { reload() }
-        .onChange(of: provider) { _ in reload() }
     }
 
     private var supportedOperationsLabel: String {
