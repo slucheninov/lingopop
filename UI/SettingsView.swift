@@ -268,6 +268,7 @@ private struct ProviderDetailView: View {
     @State private var baseURL: String = ""
     @State private var model: String = ""
     @State private var referer: String = ""
+    @State private var region: String = ""
     @State private var savedFlash: Bool = false
     @State private var hasKey: Bool = false
 
@@ -367,6 +368,16 @@ private struct ProviderDetailView: View {
                 }
             }
 
+            if provider == .microsoftTranslator {
+                Section("Region (optional)") {
+                    TextField("e.g. eastus", text: $region)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled(true)
+                    Text("Required for multi-service or regional Azure resources. Leave empty for global free-tier (F0) resources.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             Section("Fallback") {
                 LabeledContent("If \(provider.rawValue) fails") {
                     Picker("", selection: Binding(
@@ -416,6 +427,7 @@ private struct ProviderDetailView: View {
         baseURL = s.baseURL
         model = s.model
         referer = s.referer ?? ""
+        region = s.region ?? ""
     }
 
     private func clearKey() {
@@ -432,10 +444,14 @@ private struct ProviderDetailView: View {
             hasKey = true
         }
         let trimmedReferer = referer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRegion = region.trimmingCharacters(in: .whitespacesAndNewlines)
         store.updateSettings(
-            .init(baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                  model: model.trimmingCharacters(in: .whitespacesAndNewlines),
-                  referer: trimmedReferer.isEmpty ? nil : trimmedReferer),
+            .init(
+                baseURL: baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                model: model.trimmingCharacters(in: .whitespacesAndNewlines),
+                referer: trimmedReferer.isEmpty ? nil : trimmedReferer,
+                region: trimmedRegion.isEmpty ? nil : trimmedRegion
+            ),
             for: provider
         )
         savedFlash = true

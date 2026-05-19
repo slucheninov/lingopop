@@ -9,6 +9,7 @@ final class SettingsStore: ObservableObject {
         var baseURL: String
         var model: String
         var referer: String?
+        var region: String?
     }
 
     private struct Persisted: Codable {
@@ -231,7 +232,8 @@ final class SettingsStore: ObservableObject {
             baseURL: s.baseURL,
             model: s.model,
             targetLanguage: overrideTargetLanguage ?? targetLanguage,
-            referer: s.referer
+            referer: s.referer,
+            region: s.region
         )
     }
 
@@ -268,7 +270,9 @@ final class SettingsStore: ObservableObject {
                 .openai: .init(baseURL: "https://api.openai.com", model: "gpt-5.4-mini"),
                 .gemini: .init(baseURL: "https://generativelanguage.googleapis.com", model: "gemini-2.5-flash"),
                 .googleFree: .init(baseURL: "https://translate.googleapis.com", model: ""),
-                .googleCloud: .init(baseURL: "https://translation.googleapis.com", model: "nmt")
+                .googleCloud: .init(baseURL: "https://translation.googleapis.com", model: "nmt"),
+                .deepl: .init(baseURL: "https://api-free.deepl.com", model: ""),
+                .microsoftTranslator: .init(baseURL: "https://api.cognitive.microsofttranslator.com", model: "")
             ],
             hotkey: nil,
             launchAtLogin: nil,

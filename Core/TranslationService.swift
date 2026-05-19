@@ -7,7 +7,9 @@ final class TranslationService {
         .openai: OpenAIProvider(),
         .gemini: GeminiProvider(),
         .googleFree: GoogleFreeProvider(),
-        .googleCloud: GoogleCloudProvider()
+        .googleCloud: GoogleCloudProvider(),
+        .deepl: DeepLProvider(),
+        .microsoftTranslator: MicrosoftTranslatorProvider()
     ]
 
     func provider(for type: ProviderType) -> AIProvider {

@@ -38,4 +38,8 @@ enum LanguageCodes {
         if name.count == 2 { return name.lowercased() }
         return name.lowercased()
     }
+
+    static func deepLCode(for name: String) -> String {
+        code(for: name).uppercased()
+    }
 }

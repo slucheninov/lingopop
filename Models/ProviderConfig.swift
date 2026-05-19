@@ -6,6 +6,8 @@ enum ProviderType: String, Codable, CaseIterable {
     case gemini = "Gemini"
     case googleFree = "Google (Free)"
     case googleCloud = "Google Translate"
+    case deepl = "DeepL"
+    case microsoftTranslator = "Microsoft Translator"
 }
 
 struct ProviderConfig: Codable, Equatable {
@@ -15,6 +17,7 @@ struct ProviderConfig: Codable, Equatable {
     var model: String
     var targetLanguage: String
     var referer: String?
+    var region: String?
 
     static let `default` = ProviderConfig(
         providerType: .claude,
@@ -22,6 +25,7 @@ struct ProviderConfig: Codable, Equatable {
         baseURL: "https://api.anthropic.com",
         model: "claude-haiku-4-5",
         targetLanguage: "Ukrainian",
-        referer: nil
+        referer: nil,
+        region: nil
     )
 }
