@@ -47,7 +47,7 @@
 - ✨ **Rewrite** — clearer wording in the same language; meaning and tone preserved
 - ⌨️ Three separate global hotkeys (one per operation). **Translate** ships with **⌥T**; Fix grammar and Rewrite are unset until you assign them
 - 📋 Popup actions: **Copy**, **Replace** (pastes back into the source app), **Retry with another provider**
-- 🤖 Five providers: **Claude**, **OpenAI**, **Gemini** (all three operations), **Google (Free)** and **Google Translate** (translate only — unofficial public endpoint vs official Cloud Translation v2)
+- 🤖 Seven providers: **Claude**, **OpenAI**, **Gemini** (all three operations), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
 - 🔁 Per-provider fallback — on 429, 5xx, or network errors, retries once with the fallback you pick for that provider
 - 📜 Translation history (0–100 entries, default 10). The three most recent results appear at the top of the menu-bar dropdown for one-click copy
 - ☁️ Settings and history sync via iCloud Drive when available (on by default). API keys stay on each Mac, encrypted with AES-GCM
@@ -96,17 +96,18 @@ After first launch, click the LingoPop icon in the menu bar → **Settings…** 
 
 ### Providers
 
-Sidebar lists all five providers. The starred one is **active** (used for hotkeys and menu actions).
+Sidebar lists all seven providers. The starred one is **active** (used for hotkeys and menu actions).
 
 Per provider:
 
 - **Set as active** — switch which provider runs your next operation
-- **API key** — required for Claude, OpenAI, Gemini, and Google Translate; **Google (Free)** needs no key
+- **API key** — required for all providers except **Google (Free)**
 - **Endpoint** / **Model** — defaults work out of the box; override base URL or model if needed
 - **HTTP Referer** — optional, only for **Google Translate** (for API keys restricted by HTTP referrer in Google Cloud Console)
+- **Region** — optional, only for **Microsoft Translator** (required for multi-service or regional Azure resources; leave empty for global free-tier F0 resources)
 - **Fallback** — pick another provider to try once on rate-limit, server, or network errors
 
-Configure keys for several providers and switch the active one anytime. **Fix grammar** and **Rewrite** require Claude, OpenAI, or Gemini — Google providers are translate-only.
+Configure keys for several providers and switch the active one anytime. **Fix grammar** and **Rewrite** require Claude, OpenAI, or Gemini — the four translation-only providers are DeepL, Microsoft Translator, Google Translate, and Google (Free).
 
 Click **Save** on the detail pane after editing a provider.
 
@@ -135,6 +136,8 @@ Besides **Settings…** and **History…**:
 | Claude | Translate · Fix grammar · Rewrite | [console.anthropic.com](https://console.anthropic.com/) |
 | OpenAI | Translate · Fix grammar · Rewrite | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | Gemini | Translate · Fix grammar · Rewrite | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| DeepL | Translate only | [www.deepl.com/pro-api](https://www.deepl.com/pro-api) — free tier (500k chars/mo) available. Free keys end in `:fx`; change the base URL to `https://api.deepl.com` for paid keys |
+| Microsoft Translator | Translate only | [Azure Cognitive Services](https://portal.azure.com/) — free tier (F0) gives 2M chars/mo |
 | Google Translate | Translate only | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) — enable Cloud Translation API |
 | Google (Free) | Translate only | No key — unofficial public endpoint |
 
