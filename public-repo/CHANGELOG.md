@@ -6,6 +6,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+## v0.2.7 - 2026-05-19 Added DeepL and Microsoft Translator providers
+
 ## v0.2.6 - 2026-05-18 Fix: add unique identifier to ProviderDetailView for improved state management.
 
 ## v0.2.3 — 2026-05-17 Implement retranslation feature in PopupView and PopupState, allowing users to select a target language for translations; enhance AppDelegate to handle retranslation logic.
