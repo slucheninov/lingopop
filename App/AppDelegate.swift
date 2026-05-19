@@ -37,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         popup.state.onRetranslate = { [weak self] language in
             self?.retranslateWith(language)
         }
+        popup.state.onRewrite = { [weak self] text in
+            self?.rewriteResult(text)
+        }
     }
 
     private var lastCapturedText: String?
@@ -289,7 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         statusController.apply(.translating)
-        popup.state.setLoading(original: text)
+        popup.state.setLoading(operation: operation, original: text)
         popup.show(near: cursorPosition)
 
         do {
@@ -375,6 +378,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 targetLanguage: target,
                 primary: provider,
                 allowFallback: false
+            )
+        }
+    }
+
+    private func rewriteResult(_ text: String) {
+        guard let cursor = lastCursorPosition,
+              let target = lastTargetLanguage else { return }
+        Task { @MainActor in
+            await self.runOperation(
+                operation: .rewrite,
+                text: text,
+                cursorPosition: cursor,
+                detectedSource: nil,
+                targetLanguage: target,
+                primary: self.settingsStore.activeProvider,
+                allowFallback: true
             )
         }
     }

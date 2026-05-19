@@ -40,7 +40,7 @@ struct ClaudeProvider: AIProvider {
             model: config.model,
             max_tokens: 2048,
             system: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage),
-            messages: [.init(role: "user", content: text)]
+            messages: [.init(role: "user", content: PromptBuilder.userContent(text))]
         )
 
         var request = URLRequest(url: url)

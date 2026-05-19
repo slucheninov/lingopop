@@ -42,7 +42,7 @@ struct OpenAIProvider: AIProvider {
             model: config.model,
             messages: [
                 .init(role: "system", content: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage)),
-                .init(role: "user", content: text)
+                .init(role: "user", content: PromptBuilder.userContent(text))
             ],
             temperature: 0.3
         )

@@ -28,11 +28,11 @@ struct PopupView: View {
     @ViewBuilder
     private var content: some View {
         switch state.phase {
-        case .loading(let preview):
+        case .loading(let operation, let preview):
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Translating…")
+                Text("\(operation.displayName)…")
                     .font(.system(size: 13, weight: .medium))
                 Spacer(minLength: 0)
             }
@@ -102,6 +102,11 @@ struct PopupView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                Button(action: { state.onRewrite?(result.translated) }) {
+                    Label("Rewrite", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 Spacer(minLength: 0)
                 if !state.availableRetryProviders.isEmpty {
                     Menu {
@@ -113,8 +118,7 @@ struct PopupView: View {
                     } label: {
                         Label("Retry", systemImage: "arrow.triangle.2.circlepath")
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
+                    .menuIndicator(.visible)
                     .fixedSize()
                     .buttonStyle(.bordered)
                     .controlSize(.small)

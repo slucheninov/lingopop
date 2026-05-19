@@ -49,7 +49,7 @@ struct GeminiProvider: AIProvider {
 
         let body = RequestBody(
             systemInstruction: .init(parts: [.init(text: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage))]),
-            contents: [.init(role: "user", parts: [.init(text: text)])]
+            contents: [.init(role: "user", parts: [.init(text: PromptBuilder.userContent(text))])]
         )
 
         var request = URLRequest(url: url)
