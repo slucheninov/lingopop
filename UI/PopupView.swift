@@ -10,6 +10,7 @@ struct PopupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            dragHandle
             content
         }
         .padding(14)
@@ -23,6 +24,20 @@ struct PopupView: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.25), radius: 16, x: 0, y: 6)
+    }
+
+    private var dragHandle: some View {
+        HStack {
+            Spacer()
+            Capsule()
+                .fill(Color.secondary.opacity(0.35))
+                .frame(width: 28, height: 3)
+            Spacer()
+        }
+        .frame(height: 8)
+        .padding(.bottom, 2)
+        .contentShape(Rectangle())
+        .overlay(WindowDragHandle())
     }
 
     @ViewBuilder
@@ -91,6 +106,7 @@ struct PopupView: View {
                 .font(.system(size: CGFloat(popupFontSize)))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 4)
             HStack(spacing: 8) {
                 Button(action: { copy(result.translated) }) {
                     Label("Copy", systemImage: "doc.on.doc")
@@ -124,7 +140,7 @@ struct PopupView: View {
                     .controlSize(.small)
                 }
             }
-        case .error(let message):
+        case .error(let error):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
@@ -132,10 +148,21 @@ struct PopupView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.red)
             }
-            Text(message)
+            Text(error.message)
                 .font(.system(size: 12))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let details = error.details {
+                DisclosureGroup("Details") {
+                    Text(details)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 11))
+                .tint(.accentColor)
+            }
         }
     }
 
@@ -162,4 +189,20 @@ struct PopupView: View {
         }
         return list
     }
+}
+
+private struct WindowDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DragHandleView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class DragHandleView: NSView {
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+
+    override var mouseDownCanMoveWindow: Bool { true }
 }

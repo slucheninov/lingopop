@@ -278,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let primaryImpl = translationService.providers[primary]
         if primaryImpl?.supportedOperations.contains(operation) == false {
             statusController.apply(.error)
-            popup.state.setError(TranslationError.operationNotSupported(provider: primary, operation: operation).errorDescription ?? "")
+            popup.state.setError(.operationNotSupported(provider: primary, operation: operation))
             popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
             popup.show(near: cursorPosition)
             return
@@ -316,7 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
             statusController.apply(.error)
-            popup.state.setError(primaryError.errorDescription ?? "\(primaryError)")
+            popup.state.setError(primaryError)
             popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
         } catch {
             statusController.apply(.error)

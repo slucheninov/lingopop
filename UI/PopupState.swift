@@ -1,13 +1,28 @@
 import Foundation
 import Combine
 
+struct PopupError: Equatable {
+    let message: String
+    let details: String?
+
+    init(message: String, details: String? = nil) {
+        self.message = message
+        self.details = details
+    }
+
+    init(_ error: TranslationError) {
+        message = error.userSummary
+        details = error.technicalDetails
+    }
+}
+
 @MainActor
 final class PopupState: ObservableObject {
 
     enum Phase {
         case loading(operation: AIOperation, originalPreview: String)
         case result(TranslationResult)
-        case error(String)
+        case error(PopupError)
     }
 
     @Published var phase: Phase = .loading(operation: .translate, originalPreview: "")
@@ -25,7 +40,15 @@ final class PopupState: ObservableObject {
         phase = .result(result)
     }
 
+    func setError(_ error: PopupError) {
+        phase = .error(error)
+    }
+
     func setError(_ message: String) {
-        phase = .error(message)
+        setError(PopupError(message: message))
+    }
+
+    func setError(_ error: TranslationError) {
+        setError(PopupError(error))
     }
 }

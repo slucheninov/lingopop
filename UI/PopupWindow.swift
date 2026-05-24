@@ -15,8 +15,8 @@ final class PopupWindow {
         let panel = self.panel ?? makePanel()
         self.panel = panel
         let isNewlyVisible = !panel.isVisible
-        position(panel, near: point)
         if isNewlyVisible {
+            position(panel, near: point)
             panel.alphaValue = 0
         }
         panel.orderFrontRegardless()
@@ -55,7 +55,7 @@ final class PopupWindow {
         panel.hasShadow = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        panel.isMovableByWindowBackground = false
+        panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
 
         let host = NSHostingView(rootView: PopupView(state: state, onClose: { [weak self] in
