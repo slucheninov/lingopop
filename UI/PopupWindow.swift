@@ -52,7 +52,7 @@ final class PopupWindow {
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = false
+        panel.hasShadow = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isMovableByWindowBackground = true
@@ -92,6 +92,7 @@ final class PopupWindow {
         frame.origin.y -= dy
         frame.size = newSize
         panel.setFrame(frame, display: true, animate: false)
+        panel.invalidateShadow()
     }
 
     private func position(_ panel: NSPanel, near point: NSPoint) {

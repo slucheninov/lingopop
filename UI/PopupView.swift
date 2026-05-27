@@ -15,13 +15,11 @@ struct PopupView: View {
         }
         .padding(14)
         .frame(width: dynamicWidth, alignment: .topLeading)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.25), radius: 16, x: 0, y: 6)
     }
 
     private var dragHandle: some View {
@@ -104,7 +102,7 @@ struct PopupView: View {
                 .font(.system(size: CGFloat(popupFontSize)))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 4)
+                .padding(.vertical, 8)
             HStack(spacing: 8) {
                 Button(action: { copy(result.translated) }) {
                     Label("Copy", systemImage: "doc.on.doc")
