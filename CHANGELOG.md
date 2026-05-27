@@ -6,6 +6,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+## v0.2.10 - 2026-05-27 Refine PopupView layout with improved padding and background handling; enable shadow for PopupWindow for enhanced visual depth.
+
 ## v0.2.9 - 2026-05-25 Simplify PopupView background handling and improve shape clipping for better visual consistency.
 
 ## v0.2.8 - 2026-05-24 Enhance error handling in PopupState and PopupView; improve TranslationError structure for better user feedback.
