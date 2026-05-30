@@ -144,21 +144,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu(menu)
     }
 
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        for menuItem in menu.items {
+            (menuItem.view as? HistoryMenuItemView)?.setHighlighted(menuItem == item)
+        }
+    }
+
     private func rebuildMenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        let rowWidth = statusMenuRowWidth()
         let menuCount = min(settingsStore.maxHistoryCount, 10)
         let recentEntries = Array(historyStore.entries.prefix(menuCount))
+
+        let header = NSMenuItem()
+        header.view = HistoryHeaderItemView(
+            text: Self.historyHeaderText,
+            width: rowWidth
+        )
+        header.isEnabled = false
+        menu.addItem(header)
+
         if recentEntries.isEmpty {
             let placeholder = NSMenuItem(title: "No recent translations", action: nil, keyEquivalent: "")
             placeholder.isEnabled = false
             menu.addItem(placeholder)
         } else {
-            for entry in recentEntries {
+            for (index, entry) in recentEntries.enumerated() {
                 let fullText = historyMenuText(entry)
-                let item = NSMenuItem(title: truncatedMenuText(fullText), action: #selector(copyHistoryItemAction(_:)), keyEquivalent: "")
+                let item = NSMenuItem()
+                let shortcutNumber = index < 10 ? String((index + 1) % 10) : ""
+                item.view = HistoryMenuItemView(
+                    text: fullText,
+                    shortcut: shortcutNumber.isEmpty ? "" : "⌘\(shortcutNumber)",
+                    width: rowWidth
+                )
+                if !shortcutNumber.isEmpty {
+                    item.keyEquivalent = shortcutNumber
+                    item.keyEquivalentModifierMask = .command
+                }
                 item.toolTip = fullText
                 item.representedObject = entry.translated
+                item.action = #selector(copyHistoryItemAction(_:))
                 menu.addItem(item)
             }
         }
@@ -506,23 +533,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return "\(original) → \(translated)"
     }
 
-    private func truncatedMenuText(_ text: String) -> String {
+    private func widestShortcutDisplayWidth(attrs: [NSAttributedString.Key: Any]) -> CGFloat {
+        var maxWidth: CGFloat = 0
+        for operation in AIOperation.allCases {
+            guard let hk = settingsStore.hotkey(for: operation), !hk.isEmpty else { continue }
+            let width = (hk.displayString as NSString).size(withAttributes: attrs).width
+            maxWidth = max(maxWidth, width)
+        }
+        for shortcut in ["⌘H", "⌘,", "⌘Q"] {
+            let width = (shortcut as NSString).size(withAttributes: attrs).width
+            maxWidth = max(maxWidth, width)
+        }
+        return maxWidth
+    }
+
+    private static let historyHeaderText = "Select the clip you want to add to your clipboard"
+
+    private func statusMenuRowWidth() -> CGFloat {
         let font = NSFont.menuFont(ofSize: 0)
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
-        let maxWidth: CGFloat = 270
-        guard (text as NSString).size(withAttributes: attrs).width > maxWidth else { return text }
-        let chars = Array(text)
-        var lo = 0, hi = chars.count
-        while lo < hi {
-            let mid = (lo + hi + 1) / 2
-            let candidate = String(chars.prefix(mid)) + "…"
-            if (candidate as NSString).size(withAttributes: attrs).width <= maxWidth {
-                lo = mid
-            } else {
-                hi = mid - 1
+        let iconAndGap = StatusMenuMetrics.iconSize + StatusMenuMetrics.iconTitleGap
+        let shortcutGap = StatusMenuMetrics.titleShortcutGap
+        let submenuChevron: CGFloat = 14
+        let horizontalPadding = StatusMenuMetrics.horizontalInset * 2
+        var maxContent: CGFloat = (Self.historyHeaderText as NSString).size(withAttributes: attrs).width
+
+        for operation in AIOperation.allCases {
+            var row = iconAndGap + (operation.displayName as NSString).size(withAttributes: attrs).width
+            if let hk = settingsStore.hotkey(for: operation), !hk.isEmpty {
+                row += shortcutGap + (hk.displayString as NSString).size(withAttributes: attrs).width
             }
+            maxContent = max(maxContent, row)
         }
-        return lo == 0 ? "…" : String(chars.prefix(lo)) + "…"
+
+        let bottomRows: [(String, String?, Bool)] = [
+            ("Target: \(settingsStore.targetLanguage)", nil, true),
+            ("History…", "⌘H", false),
+            ("Settings…", "⌘,", false),
+            ("Quit LingoPop", "⌘Q", false)
+        ]
+        for (title, shortcut, hasSubmenu) in bottomRows {
+            var row = (title as NSString).size(withAttributes: attrs).width
+            if hasSubmenu { row += submenuChevron }
+            if let shortcut {
+                row += shortcutGap + (shortcut as NSString).size(withAttributes: attrs).width
+            }
+            maxContent = max(maxContent, row)
+        }
+
+        return max(340, maxContent + horizontalPadding) + 40
     }
 
     @objc private func quitAction() {

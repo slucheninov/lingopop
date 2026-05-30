@@ -6,6 +6,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+## v0.2.11 - 2026-05-30 Improved recent translations menu
+
+- Recent translations in the menu bar are now easier to read — more text visible before it's cut off
+- Each item shows a keyboard shortcut (⌘1–⌘0) so you can quickly copy a recent translation without touching the mouse
+- The menu looks more polished and consistent with the rest of macOS
+
 ## v0.2.10 - 2026-05-27 Refine PopupView layout with improved padding and background handling; enable shadow for PopupWindow for enhanced visual depth.
 
 ## v0.2.9 - 2026-05-25 Simplify PopupView background handling and improve shape clipping for better visual consistency.
