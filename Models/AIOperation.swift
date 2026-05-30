@@ -4,12 +4,14 @@ enum AIOperation: String, Codable, CaseIterable, Hashable {
     case translate
     case grammarFix
     case rewrite
+    case explain
 
     var displayName: String {
         switch self {
         case .translate: return "Translate"
         case .grammarFix: return "Fix grammar"
         case .rewrite: return "Rewrite"
+        case .explain: return "Explain"
         }
     }
 
@@ -18,6 +20,7 @@ enum AIOperation: String, Codable, CaseIterable, Hashable {
         case .translate: return "Translation"
         case .grammarFix: return "Grammar fix"
         case .rewrite: return "Rewrite"
+        case .explain: return "Explanation"
         }
     }
 
@@ -26,6 +29,7 @@ enum AIOperation: String, Codable, CaseIterable, Hashable {
         case .translate: return "globe"
         case .grammarFix: return "checkmark.seal"
         case .rewrite: return "wand.and.stars"
+        case .explain: return "text.magnifyingglass"
         }
     }
 }
@@ -56,6 +60,13 @@ enum PromptBuilder {
             Rewrite the content inside <text> tags in the same language to improve clarity, flow, and style while preserving the original meaning, tone, and intent. Do not add information not present in the original.
             Output only the rewritten text. No explanations, no comments, no quotes.
             Do not use em dashes (—); use a regular hyphen-minus (-) if a dash is needed.
+            """
+        case .explain:
+            return """
+            You are a knowledgeable assistant. Your only job is to explain text.
+            \(fence)
+            Explain the content inside <text> tags in \(targetLanguage). Cover what it means, its context, and any important nuances - enough for someone unfamiliar with the topic to understand it well. Keep it focused: a few sentences to a short paragraph, no exhaustive deep-dives unless the subject truly requires it.
+            Output only the explanation. Do not quote the original text at the start, do not use preambles like "This text means..." or "Sure, here is...".
             """
         }
     }

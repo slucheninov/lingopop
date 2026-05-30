@@ -40,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         popup.state.onRewrite = { [weak self] text in
             self?.rewriteResult(text)
         }
+        popup.state.onExplain = { [weak self] text in
+            self?.explainResult(text)
+        }
     }
 
     private var lastCapturedText: String?
@@ -415,6 +418,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task { @MainActor in
             await self.runOperation(
                 operation: .rewrite,
+                text: text,
+                cursorPosition: cursor,
+                detectedSource: nil,
+                targetLanguage: target,
+                primary: self.settingsStore.activeProvider,
+                allowFallback: true
+            )
+        }
+    }
+
+    private func explainResult(_ text: String) {
+        guard let cursor = lastCursorPosition,
+              let target = lastTargetLanguage else { return }
+        Task { @MainActor in
+            await self.runOperation(
+                operation: .explain,
                 text: text,
                 cursorPosition: cursor,
                 detectedSource: nil,

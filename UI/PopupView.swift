@@ -119,6 +119,13 @@ struct PopupView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                if result.operation != .explain {
+                    Button(action: { state.onExplain?(result.translated) }) {
+                        Label("Explain", systemImage: "text.magnifyingglass")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
                 Spacer(minLength: 0)
                 if !state.availableRetryProviders.isEmpty {
                     Menu {

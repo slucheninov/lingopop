@@ -6,6 +6,17 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+### v0.2.14 — Explain operation
+
+- New **Explain** action in the popup: tap it to get a concise explanation of any translated or rewritten text, right in the same popup window
+- Explanation is generated in the configured target language and covers meaning, context, and key nuances
+- The Explain button only appears on non-explain results, so it never chains recursively
+
+## v0.2.12 - 2026-05-30 Privacy Policy and clipboard transparency
+
+- Added a **Privacy Policy** link in the About tab of Settings — opens the policy directly from the app
+- Enhanced in-app privacy notes clarifying that clipboard data is processed temporarily and never stored or sent outside the selected AI provider
+
 ## v0.2.11 - 2026-05-30 Improved recent translations menu
 
 - Recent translations in the menu bar are now easier to read — more text visible before it's cut off

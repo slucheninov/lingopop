@@ -31,6 +31,7 @@ final class PopupState: ObservableObject {
     var onReplace: ((String) -> Void)?
     var onRetranslate: ((String) -> Void)?
     var onRewrite: ((String) -> Void)?
+    var onExplain: ((String) -> Void)?
 
     func setLoading(operation: AIOperation, original: String) {
         phase = .loading(operation: operation, originalPreview: String(original.prefix(120)))
