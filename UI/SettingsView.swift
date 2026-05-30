@@ -550,6 +550,8 @@ private struct AboutTab: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 32)
+            Link("Privacy Policy", destination: URL(string: "https://github.com/slucheninov/lingopop/blob/main/PRIVACY.md")!)
+                .font(.system(size: 12))
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

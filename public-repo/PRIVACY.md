@@ -32,6 +32,32 @@ These files sync between Macs signed into the same Apple ID, just like any other
 
 You can disable iCloud sync in Settings → Main.
 
+## Clipboard data
+
+When you trigger an operation, LingoPop temporarily reads the system clipboard to capture your selected text. This works as follows:
+
+1. The current clipboard contents are saved in memory.
+2. A `⌘C` keystroke is simulated to copy your selection.
+3. The selected text is read from the clipboard and sent to your chosen AI provider to perform the operation.
+4. The original clipboard contents are restored immediately afterward.
+
+**The clipboard snapshot is never written to disk and is never sent anywhere except the AI provider you have chosen.** The AI provider receives only the text needed for the operation — no clipboard metadata, no surrounding context, no other clipboard entries.
+
+If translation history is enabled, the source text and result are saved to:
+
+- `~/Library/Application Support/LingoPop/` (local, always)
+- `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/history.json` (only if iCloud sync is on in Settings → Main)
+
+You can limit or clear history in Settings → Main, and disable iCloud sync at any time.
+
+### Privacy summary for clipboard data
+
+- Clipboard data is only read in memory for the duration of the operation.
+- No clipboard data is stored by LingoPop beyond the optional translation history entries.
+- No clipboard data is transmitted to LingoPop or any third party other than the AI provider you select.
+- No analytics are collected on your clipboard content.
+- Your clipboard history (outside of LingoPop's own translation history) remains entirely private and under your control.
+
 ## Telemetry and analytics
 
 There is no telemetry, no analytics, no crash reporting service. The app makes outbound network requests only to the AI provider you choose, and only when you trigger an operation.
