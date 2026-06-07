@@ -9,12 +9,14 @@ LingoPop is a native macOS menu-bar app (Swift / AppKit + SwiftUI). User selects
 - **Translate** — translate to a configurable target language (with optional auto-detect + per-source-language target via `languagePairs`)
 - **Fix grammar** — only grammar / spelling / punctuation, preserving language and style
 - **Rewrite** — improve clarity and style while preserving meaning
+- **Explain** — concise explanation of the text (meaning, context, key nuances) in the target language
+- **Screen Translate** — drag a selection over any screen region; Apple Vision OCR extracts the text first (shown as `.ocr` popup phase with Copy + Translate + Retry buttons); pressing Translate runs the AI translation. OCR text is auto-copied to clipboard on recognition; translation result is also auto-copied. Retry sends the captured image directly to a vision-capable provider (Claude, OpenAI, Gemini) for combined OCR + translation in one step.
 
-Each operation has its own configurable global hotkey and its own menu-bar item. The popup offers Copy, Replace (paste back into the source app via simulated `Cmd+V`), and Retry-with-other-provider.
+Each operation has its own configurable global hotkey and its own menu-bar item. The popup offers Copy, Replace (paste back into the source app via simulated `Cmd+V`), and Retry-with-other-provider. Replace is hidden for Screen Translate results (can't paste back into an image).
 
-Supported providers: **Claude** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only). The Google providers explicitly declare `supportedOperations = [.translate]`; the others handle all three. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
+Supported providers: **Claude** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate]`; Claude/OpenAI/Gemini handle all operations. Claude/OpenAI/Gemini also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
 
-Requirements: macOS 13.0+, Xcode 15+. The app uses `.accessory` activation policy (no Dock icon, `LSUIElement = YES`), is not sandboxed (needs to post CGEvents and read another app's clipboard via Accessibility), and is signed with a self-signed cert.
+Requirements: macOS 13.0+, Xcode 15+. The app uses `.accessory` activation policy (no Dock icon, `LSUIElement = YES`), is not sandboxed (needs to post CGEvents and read another app's clipboard via Accessibility, and capture screen content via Screen Recording TCC), and is signed with a self-signed cert.
 
 ## Build / run
 
@@ -97,9 +99,17 @@ End-to-end setup is in `RELEASING.md`.
 4. **runOperation** picks the active provider, builds a `ProviderConfig`, calls `TranslationService.execute(text:operation:config:)`. If the call throws an error that `shouldRetryWithFallback` deems retry-able (429, 5xx, network), it retries once with `settingsStore.fallback(for: primary)` and marks the result `viaFallback = true`.
 5. The result is shown in **PopupWindow** (a borderless `NSPanel` floating above all apps) hosting **PopupView** (SwiftUI). Copy / Replace / Retry-with-other-provider live on `PopupState`. Replace puts the text on the pasteboard and posts `Cmd+V` to the previously focused app.
 
+**Screen Translate lifecycle** (`AppDelegate.handleScreenTranslateHotkey()`):
+1. Record `previousApp` (frontmost app before overlay), then call `CaptureOverlayWindow.runSelection()` — creates one `NSPanel` per screen (handles mixed Retina/non-Retina setups), tracks mouse via `NSEvent.addLocalMonitorForEvents` in global AppKit coordinates. Returns the selection rect in global screen coords or throws `CaptureOverlayError.cancelled`.
+2. Restore `previousApp` focus and wait 150 ms so any subsequent `simulateCommandC()` goes to the right app (not LingoPop).
+3. `ScreenCapture.capture(rect:)` converts from AppKit coordinates (Y-up, origin at bottom-left) to CG coordinates (Y-down) using `NSScreen.main?.frame.height`, then calls `CGWindowListCreateImage`. Requires Screen Recording TCC permission.
+4. `ScreenOCR.recognize(image:)` runs Apple Vision `VNRecognizeTextRequest` and returns the joined string. If it yields no text, retry providers (vision-capable ones) are offered instead.
+5. Popup shows the `.ocr(text:)` phase: recognized text + Copy / Translate / Retry buttons. OCR text is auto-copied to clipboard. `availableRetryProviders` is set to `visionCapableProviders()` so Retry sends the image directly to Claude/OpenAI/Gemini.
+6. When user taps Translate, `translateScreenOCR(_:)` calls `runOperation(.screenTranslate, ...)`. The translation result is auto-copied to clipboard via `present(result:source:viaFallback:)`.
+
 ### Providers
 
-Five `AIProvider` implementations under `Providers/`, each conforming to:
+Seven `AIProvider` implementations under `Providers/`, each conforming to:
 
 ```swift
 protocol AIProvider {
@@ -108,13 +118,15 @@ protocol AIProvider {
     var availableModels: [String] { get }
     var requiresApiKey: Bool { get }                  // default true
     var supportedOperations: Set<AIOperation> { get } // default: all ops
+    var supportsVision: Bool { get }                  // default false; true for Claude/OpenAI/Gemini
     func execute(text:operation:config:) async throws -> String
 }
 ```
 
-- **ClaudeProvider** (`/v1/messages`), **OpenAIProvider** (`/v1/chat/completions`), **GeminiProvider** (`/v1beta/models/{model}:generateContent`) handle all three operations by sending the system prompt from `PromptBuilder` (`Models/AIOperation.swift`).
+- **ClaudeProvider** (`/v1/messages`), **OpenAIProvider** (`/v1/chat/completions`), **GeminiProvider** (`/v1beta/models/{model}:generateContent`) handle all operations including `.screenTranslate`, and declare `supportsVision = true` — they can receive the captured image directly and do combined OCR + translation in one step.
 - **GoogleFreeProvider** uses the unofficial `translate.googleapis.com/translate_a/single` endpoint — no API key, only supports `.translate`.
 - **GoogleCloudProvider** uses the official Cloud Translation v2 API (`?key=...`) — only `.translate`. Supports an optional `Referer` header for keys with HTTP-referrer restriction.
+- **DeepLProvider** and **MicrosoftTranslatorProvider** — translate-only.
 
 `TranslationService` (`Core/TranslationService.swift`) just holds the dict `[ProviderType: AIProvider]` and forwards calls. It also exposes the dict to the UI so the Provider tab can render model presets and supportedOperations badges per provider.
 
@@ -143,6 +155,14 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - **StatusItemController** swaps the menu-bar icon between idle (globe), translating (spinning arrows), and error (red triangle, auto-resets after 3 s).
 - **HotkeyRecorderField** (`UI/HotkeyRecorderField.swift`) is an `NSViewRepresentable` wrapping a custom `NSButton` that intercepts `keyDown` while recording, builds a `HotkeyConfig` from the `event.keyCode` and modifier flags.
 
+### Screen Translate components
+
+- **`UI/CaptureOverlayWindow.swift`** — one `NSPanel` per `NSScreen.screens`. Uses `NSEvent.addLocalMonitorForEvents` (requires `NSApp.activate`) to track mouse in global AppKit coords via `NSEvent.mouseLocation`. `OverlayDrawingView` converts global → local coords using `screenOrigin` (the screen's `frame.origin`). After selection, `previousApp?.activate(options: .activateIgnoringOtherApps)` + 150 ms sleep restores focus so subsequent `simulateCommandC()` isn't misdirected to LingoPop.
+- **`Core/ScreenCapture.swift`** — `CGWindowListCreateImage` with AppKit↔CG Y-flip (`NSScreen.main?.frame.height - rect.maxY`). Returns `CGImage`; throws `ScreenCaptureError.tooSmall` for areas under 10×10 px. Requires Screen Recording TCC.
+- **`Core/ScreenOCR.swift`** — `VNRecognizeTextRequest` via Vision framework. Joins recognized strings with spaces; throws if result is empty.
+- **`Core/PermissionsManager.swift`** — `isScreenRecordingGranted()` = `CGPreflightScreenCaptureAccess()`; `requestScreenCaptureAccess()` = `CGRequestScreenCaptureAccess()` on macOS 15+ (auto-prompts on first `CGWindowListCreateImage` call on earlier versions).
+- **`UI/SettingsView.swift`** — `MainSettingsTab` has a Screen Recording permission section mirroring the Accessibility section: shows green checkmark when granted, or "Request" + "Open Settings" buttons when denied.
+
 ### Settings UI structure
 
 `SettingsView` is a `TabView` with four tabs: Main, Providers, Shortcuts, About. The Providers tab is an `HStack` with a sidebar `List(selection:)` on the left and a per-provider detail form on the right (System Settings → Internet Accounts pattern). The "Active" provider is set with a dedicated button, distinct from "selected for editing in the sidebar" — these are intentionally separate concepts.
@@ -154,3 +174,6 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - `@Published` auto-save uses `.dropFirst()` on each publisher (not `dropFirst(N)` on a merge) so the initial emit doesn't trigger a save. When you add a new `@Published` to `SettingsStore`, also add it to `installAutoSave()` and to `Persisted` / `apply(_:)` / `save()` — easy to forget one.
 - Settings persistence is **per-provider** for `fallbacks`, `providers[ProviderType]`, and `apiKey.*` — when the active provider changes, those keep their own values. Don't reintroduce a global `fallbackProvider`.
 - Stable code-signing cert is load-bearing for TCC. If users are getting Accessibility prompts on every rebuild, `LingoPop Dev` is probably missing from their keychain.
+- Screen Recording TCC is also bound to the cert identity. Same logic applies: ad-hoc re-signing invalidates the grant; keep the `LingoPop Dev` cert stable.
+- `CaptureOverlayWindow` requires `NSApp.activate(ignoringOtherApps: true)` for `addLocalMonitorForEvents` to receive mouse events. This leaves LingoPop as the active app — always restore `previousApp` focus (+ 150 ms yield) before any subsequent `simulateCommandC()` call, otherwise Cmd+C fires in LingoPop rather than the user's app.
+- `PopupState.Phase` has an `.ocr(text:)` case used only by Screen Translate. The Replace button is hidden when `result.operation == .screenTranslate` (can't paste into an image). The Rewrite/Explain buttons remain — they work on the translated text.

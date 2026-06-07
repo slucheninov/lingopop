@@ -53,6 +53,47 @@ struct PopupView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+        case .ocr(let text):
+            HStack(spacing: 4) {
+                Image(systemName: "text.viewfinder")
+                    .font(.system(size: headerFontSize, weight: .semibold))
+                Text("Recognized text")
+                    .font(.system(size: headerFontSize, weight: .semibold))
+            }
+            .foregroundStyle(.secondary)
+            Text(text)
+                .font(.system(size: CGFloat(popupFontSize)))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 8)
+            HStack(spacing: 8) {
+                Button(action: { copy(text) }) {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Button(action: { state.onTranslate?(text) }) {
+                    Label("Translate", systemImage: "globe")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                Spacer(minLength: 0)
+                if !state.availableRetryProviders.isEmpty {
+                    Menu {
+                        ForEach(state.availableRetryProviders, id: \.self) { provider in
+                            Button("Retry with \(provider.rawValue)") {
+                                state.onRetry?(provider)
+                            }
+                        }
+                    } label: {
+                        Label("Retry", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .menuIndicator(.visible)
+                    .fixedSize()
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
         case .result(let result):
             HStack(spacing: 6) {
                 HStack(spacing: 4) {
@@ -109,11 +150,13 @@ struct PopupView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                Button(action: { state.onReplace?(result.translated) }) {
-                    Label("Replace", systemImage: "arrow.uturn.left")
+                if result.operation != .screenTranslate {
+                    Button(action: { state.onReplace?(result.translated) }) {
+                        Label("Replace", systemImage: "arrow.uturn.left")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
                 Button(action: { state.onRewrite?(result.translated) }) {
                     Label("Rewrite", systemImage: "wand.and.stars")
                 }
@@ -172,10 +215,14 @@ struct PopupView: View {
     private var headerFontSize: CGFloat { max(8, CGFloat(popupFontSize) - 2) }
 
     private var dynamicWidth: CGFloat {
-        // Minimum must fit the header row; scales with header font size
         let minW = max(320, headerFontSize * 30)
-        guard case .result(let result) = state.phase else { return minW }
-        let chars = CGFloat(result.translated.count)
+        let text: String
+        switch state.phase {
+        case .result(let result): text = result.translated
+        case .ocr(let t): text = t
+        default: return minW
+        }
+        let chars = CGFloat(text.count)
         let fontFactor = CGFloat(popupFontSize) / 13.0
         return min(700, max(minW, 200 + chars * fontFactor))
     }

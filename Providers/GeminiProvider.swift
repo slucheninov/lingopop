@@ -38,6 +38,87 @@ struct GeminiProvider: AIProvider {
         }
     }
 
+    var supportsVision: Bool { true }
+
+    private struct VisionRequestBody: Encodable {
+        let contents: [VisionContent]
+
+        struct VisionContent: Encodable {
+            let role: String
+            let parts: [VisionPart]
+
+            enum VisionPart: Encodable {
+                case text(String)
+                case inlineData(mimeType: String, data: String)
+
+                func encode(to encoder: Encoder) throws {
+                    var c = encoder.container(keyedBy: CodingKeys.self)
+                    switch self {
+                    case .text(let t):
+                        try c.encode(t, forKey: .text)
+                    case .inlineData(let mime, let data):
+                        try c.encode(InlineData(mimeType: mime, data: data), forKey: .inlineData)
+                    }
+                }
+
+                enum CodingKeys: String, CodingKey { case text, inlineData }
+                struct InlineData: Encodable {
+                    let mimeType: String
+                    let data: String
+                }
+            }
+        }
+    }
+
+    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> String {
+        guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
+        let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        let encodedKey = config.apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? config.apiKey
+        let urlString = "\(base.trimmingCharacters(in: ["/"]))/v1beta/models/\(config.model):generateContent?key=\(encodedKey)"
+        guard let url = URL(string: urlString) else { throw TranslationError.invalidURL }
+
+        let base64 = image.base64EncodedString()
+        let prompt = "Extract all text from this image and translate it into \(targetLanguage). Output only the translated text. No explanations, no preamble."
+
+        let body = VisionRequestBody(contents: [
+            .init(role: "user", parts: [
+                .inlineData(mimeType: "image/jpeg", data: base64),
+                .text(prompt)
+            ])
+        ])
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw TranslationError.network(error)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw TranslationError.decoding("Not an HTTP response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
+        }
+
+        do {
+            let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
+            let text = decoded.candidates
+                .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
+                .joined()
+            guard !text.isEmpty else { throw TranslationError.emptyResponse }
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch let error as TranslationError {
+            throw error
+        } catch {
+            throw TranslationError.decoding(error.localizedDescription)
+        }
+    }
+
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL

@@ -26,6 +26,7 @@ private struct MainSettingsTab: View {
 
     @ObservedObject var store: SettingsStore
     @State private var accessibilityGranted: Bool = PermissionsManager.isAccessibilityGranted()
+    @State private var screenRecordingGranted: Bool = PermissionsManager.isScreenRecordingGranted()
     @AppStorage("LingoPop.popupFontSize") private var popupFontSize: Double = 13
 
     var body: some View {
@@ -118,13 +119,43 @@ private struct MainSettingsTab: View {
                     }
                 }
             }
+
+            if !screenRecordingGranted {
+                Section("Screen Recording access required") {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Required for Screen Translate.")
+                            .font(.system(size: 12))
+                        Spacer()
+                        Button("Request") { PermissionsManager.requestScreenCaptureAccess(); refreshScreenRecording() }
+                        Button("Open Settings") { PermissionsManager.openScreenRecordingSettings() }
+                    }
+                }
+            } else {
+                Section("Screen Recording") {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                        Text("Granted").font(.system(size: 12))
+                        Spacer()
+                        Button("Re-check") { refreshScreenRecording() }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
-        .onAppear { refreshAccessibility() }
+        .onAppear {
+            refreshAccessibility()
+            refreshScreenRecording()
+        }
     }
 
     private func refreshAccessibility() {
         accessibilityGranted = PermissionsManager.isAccessibilityGranted()
+    }
+
+    private func refreshScreenRecording() {
+        screenRecordingGranted = PermissionsManager.isScreenRecordingGranted()
     }
 }
 
