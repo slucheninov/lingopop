@@ -23,6 +23,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/popup-screen.png" alt="Screen Translate — recognized text popup" width="600"/>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/menu.png" alt="Menu-bar dropdown" width="500"/>
 </p>
 
@@ -45,9 +49,10 @@
 - 🌐 **Translate** to any target language. Optional auto-detect picks the target from your language pairs (defaults: Russian ↔ Ukrainian, English → Ukrainian); otherwise uses the default target
 - ✓ **Fix grammar** — spelling, punctuation, and grammar only; meaning and style stay the same
 - ✨ **Rewrite** — clearer wording in the same language; meaning and tone preserved
-- ⌨️ Three separate global hotkeys (one per operation). **Translate** ships with **⌥T**; Fix grammar and Rewrite are unset until you assign them
+- 🖼️ **Screen Translate** — press the hotkey, drag a selection over any screen region, and get the recognized text instantly. Press **Translate** in the popup to run AI translation, or just grab the OCR text as-is. Works across multiple monitors
+- ⌨️ Each operation has its own configurable global hotkey. **Translate** ships with **⌥T**; others are unset until you assign them
 - 📋 Popup actions: **Copy**, **Replace** (pastes back into the source app), **Retry with another provider**
-- 🤖 Seven providers: **Claude**, **OpenAI**, **Gemini** (all three operations), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
+- 🤖 Seven providers: **Claude**, **OpenAI**, **Gemini** (all three operations + vision), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
 - 🔁 Per-provider fallback — on 429, 5xx, or network errors, retries once with the fallback you pick for that provider
 - 📜 Translation history (0–100 entries, default 10). The three most recent results appear at the top of the menu-bar dropdown for one-click copy
 - ☁️ Settings and history sync via iCloud Drive when available (on by default). API keys stay on each Mac, encrypted with AES-GCM
@@ -113,7 +118,7 @@ Click **Save** on the detail pane after editing a provider.
 
 ### Shortcuts
 
-Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrite**. Click the field, press a combination with **⌃ ⌥ ⇧ ⌘** plus a key; **Esc** cancels, **✕** clears.
+Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrite**, **Screen Translate**. Click the field, press a combination with **⌃ ⌥ ⇧ ⌘** plus a key; **Esc** cancels, **✕** clears.
 
 ### About
 
@@ -150,7 +155,8 @@ If you'd rather not bypass Gatekeeper at all, build LingoPop from source (reques
 ## Requirements
 
 - macOS 13 (Ventura) or later
-- **Accessibility** permission (to capture selected text)
+- **Accessibility** permission (to capture selected text via simulated copy)
+- **Screen Recording** permission (for Screen Translate — to capture screen content)
 - An API key for the active provider, unless you use **Google (Free)** or only need translate via a configured Google provider
 
 ## Privacy
