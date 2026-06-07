@@ -21,6 +21,7 @@ final class PopupState: ObservableObject {
 
     enum Phase {
         case loading(operation: AIOperation, originalPreview: String)
+        case ocr(text: String)
         case result(TranslationResult)
         case error(PopupError)
     }
@@ -32,9 +33,14 @@ final class PopupState: ObservableObject {
     var onRetranslate: ((String) -> Void)?
     var onRewrite: ((String) -> Void)?
     var onExplain: ((String) -> Void)?
+    var onTranslate: ((String) -> Void)?
 
     func setLoading(operation: AIOperation, original: String) {
         phase = .loading(operation: operation, originalPreview: String(original.prefix(120)))
+    }
+
+    func setOCR(_ text: String) {
+        phase = .ocr(text: text)
     }
 
     func setResult(_ result: TranslationResult) {

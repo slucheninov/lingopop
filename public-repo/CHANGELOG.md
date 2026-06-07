@@ -6,6 +6,16 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+### v0.2.15 — Screen Translate
+
+- New **Screen Translate** operation: press the hotkey, drag a selection over any part of the screen, and LingoPop extracts the text using Apple's Vision OCR
+- Popup first shows the **recognized text** with Copy and Translate buttons — use it as a quick OCR tool without translating, or press Translate to run the full AI translation
+- Recognized text is automatically copied to the clipboard the moment it's recognized
+- Translation result is also auto-copied — no extra click needed
+- **Retry** button lets you skip local OCR and send the captured image directly to a vision-capable provider (Claude, OpenAI, Gemini) for combined OCR + translation in one step
+- Works reliably across multiple monitors, including mixed Retina/non-Retina setups
+- Requires **Screen Recording** permission (TCC prompt shown on first use; Settings → Main shows permission status)
+
 ### v0.2.14 — Explain operation
 
 - New **Explain** action in the popup: tap it to get a concise explanation of any translated or rewritten text, right in the same popup window

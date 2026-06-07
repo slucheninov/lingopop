@@ -6,10 +6,10 @@ struct GoogleFreeProvider: AIProvider {
     let defaultBaseURL = "https://translate.googleapis.com"
     let availableModels: [String] = []
     let requiresApiKey: Bool = false
-    let supportedOperations: Set<AIOperation> = [.translate]
+    let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
-        guard operation == .translate else {
+        guard operation == .translate || operation == .screenTranslate else {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL

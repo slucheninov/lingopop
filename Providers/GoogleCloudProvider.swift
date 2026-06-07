@@ -6,7 +6,7 @@ struct GoogleCloudProvider: AIProvider {
     let defaultBaseURL = "https://translation.googleapis.com"
     let availableModels: [String] = ["nmt", "base"]
     let requiresApiKey: Bool = true
-    let supportedOperations: Set<AIOperation> = [.translate]
+    let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
     private struct RequestBody: Encodable {
         let q: String
@@ -26,7 +26,7 @@ struct GoogleCloudProvider: AIProvider {
     }
 
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
-        guard operation == .translate else {
+        guard operation == .translate || operation == .screenTranslate else {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }

@@ -5,7 +5,7 @@ struct DeepLProvider: AIProvider {
     let type: ProviderType = .deepl
     let defaultBaseURL = "https://api-free.deepl.com"
     let availableModels: [String] = []
-    let supportedOperations: Set<AIOperation> = [.translate]
+    let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
     private struct RequestBody: Encodable {
         let text: [String]
@@ -20,7 +20,7 @@ struct DeepLProvider: AIProvider {
     }
 
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
-        guard operation == .translate else {
+        guard operation == .translate || operation == .screenTranslate else {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }

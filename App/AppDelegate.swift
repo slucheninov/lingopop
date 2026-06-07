@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         popup.state.onExplain = { [weak self] text in
             self?.explainResult(text)
         }
+        popup.state.onTranslate = { [weak self] text in
+            self?.translateScreenOCR(text)
+        }
     }
 
     private var lastCapturedText: String?
@@ -50,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastDetectedSource: String?
     private var lastTargetLanguage: String?
     private var lastOperation: AIOperation = .translate
+    private var lastCapturedImage: NSImage?
 
     private func observeSettings() {
         settingsStore.$hotkeys
@@ -212,6 +216,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(makeLanguageSubmenu())
         menu.addItem(NSMenuItem(title: "History…", action: #selector(historyAction), keyEquivalent: "h"))
         menu.addItem(NSMenuItem(title: "Settings…", action: #selector(settingsAction), keyEquivalent: ","))
+        if !PermissionsManager.isAccessibilityGranted() {
+            menu.addItem(NSMenuItem.separator())
+            let item = NSMenuItem(title: "⚠ Re-check Accessibility…", action: #selector(recheckAccessibilityAction), keyEquivalent: "")
+            menu.addItem(item)
+        }
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit LingoPop", action: #selector(quitAction), keyEquivalent: "q"))
 
@@ -246,6 +255,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleHotkey(operation: AIOperation) {
+        if operation == .screenTranslate {
+            handleScreenTranslateHotkey()
+            return
+        }
         guard PermissionsManager.isAccessibilityGranted() else {
             DispatchQueue.main.async {
                 self.showAccessibilityHelpAlert()
@@ -291,6 +304,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.statusController.apply(.error)
                 self.popup.state.setError("\(error)")
                 self.popup.show(near: NSEvent.mouseLocation)
+            }
+        }
+    }
+
+    private func handleScreenTranslateHotkey() {
+        if !PermissionsManager.isScreenRecordingGranted() {
+            // Show system TCC prompt first (macOS 15+). If still denied, show manual instructions.
+            guard PermissionsManager.requestScreenCaptureAccess() else {
+                showScreenRecordingHelpAlert()
+                return
+            }
+        }
+        let previousApp = NSWorkspace.shared.frontmostApplication
+        Task { @MainActor in
+            lastCapturedText = nil
+            do {
+                let screenRect = try await CaptureOverlayWindow.runSelection()
+                // Restore previous app and give the OS 150 ms to transfer focus so
+                // any subsequent Cmd+C (regular translate) goes to the right app.
+                previousApp?.activate(options: .activateIgnoringOtherApps)
+                try? await Task.sleep(nanoseconds: 150_000_000)
+
+                let cgImage = try ScreenCapture.capture(rect: screenRect)
+                let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                lastCapturedImage = nsImage
+
+                let popupAnchor = NSPoint(x: screenRect.maxX, y: screenRect.minY)
+                lastCursorPosition = popupAnchor
+                lastTargetLanguage = resolveTargetLanguage(detectedSource: nil)
+                lastOperation = .screenTranslate
+
+                statusController.apply(.translating)
+                popup.state.setLoading(operation: .screenTranslate, original: "")
+                popup.show(near: popupAnchor)
+
+                let ocrText: String
+                do {
+                    ocrText = try await ScreenOCR.recognize(image: cgImage)
+                } catch {
+                    statusController.apply(.error)
+                    let retryProviders = visionCapableProviders()
+                    popup.state.setError(retryProviders.isEmpty
+                        ? "No text found in the selected area. Try a larger selection."
+                        : "No text found in the selected area. Try a larger selection or use Retry to send the image to AI.")
+                    popup.state.availableRetryProviders = retryProviders
+                    return
+                }
+
+                let detectedSource = LanguageDetector.detect(ocrText)
+                let targetLanguage = resolveTargetLanguage(detectedSource: detectedSource)
+                lastCapturedText = ocrText
+                lastDetectedSource = detectedSource
+                lastTargetLanguage = targetLanguage
+
+                // Auto-copy the OCR text so it's immediately available
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(ocrText, forType: .string)
+
+                statusController.apply(.idle)
+                popup.state.setOCR(ocrText)
+                popup.state.availableRetryProviders = visionCapableProviders()
+            } catch CaptureOverlayError.cancelled {
+                previousApp?.activate(options: .activateIgnoringOtherApps)
+            } catch ScreenCaptureError.tooSmall {
+                previousApp?.activate(options: .activateIgnoringOtherApps)
+                statusController.apply(.error)
+                popup.state.setError("Selection is too small. Try selecting a larger area.")
+                popup.show(near: NSEvent.mouseLocation)
+            } catch {
+                previousApp?.activate(options: .activateIgnoringOtherApps)
+                statusController.apply(.error)
+                popup.state.setError("\(error)")
+                popup.show(near: NSEvent.mouseLocation)
             }
         }
     }
@@ -356,6 +442,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func present(result: TranslationResult, source: String?, viaFallback: Bool) {
+        if result.operation == .screenTranslate {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(result.translated, forType: .string)
+        }
         popup.state.setResult(result)
         popup.state.availableRetryProviders = retryProviders(excluding: result.provider, for: result.operation)
         statusController.apply(.idle)
@@ -371,8 +461,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func retryProviders(excluding: ProviderType, for operation: AIOperation) -> [ProviderType] {
-        ProviderType.allCases.filter {
-            $0 != excluding && isProviderReady($0, for: operation)
+        ProviderType.allCases.filter { type in
+            guard type != excluding, isProviderReady(type, for: operation) else { return false }
+            if operation == .screenTranslate {
+                return translationService.providers[type]?.supportsVision == true
+            }
+            return true
+        }
+    }
+
+    private func visionCapableProviders(excluding: ProviderType? = nil) -> [ProviderType] {
+        ProviderType.allCases.filter { type in
+            guard type != excluding else { return false }
+            guard let impl = translationService.providers[type] else { return false }
+            guard impl.supportsVision else { return false }
+            if impl.requiresApiKey { return settingsStore.hasApiKey(for: type) }
+            return true
         }
     }
 
@@ -395,10 +499,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func retryWith(_ provider: ProviderType) {
-        guard let text = lastCapturedText,
-              let cursor = lastCursorPosition,
+        guard let cursor = lastCursorPosition,
               let target = lastTargetLanguage else { return }
         let operation = lastOperation
+
+        if operation == .screenTranslate, let nsImage = lastCapturedImage {
+            Task { @MainActor in
+                guard let impl = translationService.providers[provider], impl.supportsVision else { return }
+                let config = settingsStore.config(for: provider, overrideTargetLanguage: target)
+                statusController.apply(.translating)
+                popup.state.setLoading(operation: .screenTranslate, original: "")
+                do {
+                    guard let jpegData = jpegData(from: nsImage) else {
+                        throw TranslationError.emptyResponse
+                    }
+                    let translated = try await impl.executeVision(image: jpegData, targetLanguage: target, config: config)
+                    let result = TranslationResult(
+                        original: lastCapturedText ?? "",
+                        translated: translated,
+                        targetLanguage: target,
+                        provider: provider,
+                        operation: .screenTranslate
+                    )
+                    present(result: result, source: lastDetectedSource, viaFallback: false)
+                } catch let error as TranslationError {
+                    statusController.apply(.error)
+                    popup.state.setError(error)
+                    popup.state.availableRetryProviders = visionCapableProviders(excluding: provider)
+                } catch {
+                    statusController.apply(.error)
+                    popup.state.setError("\(error)")
+                    popup.state.availableRetryProviders = visionCapableProviders(excluding: provider)
+                }
+            }
+            return
+        }
+
+        guard let text = lastCapturedText else { return }
         Task { @MainActor in
             await self.runOperation(
                 operation: operation,
@@ -408,6 +545,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 targetLanguage: target,
                 primary: provider,
                 allowFallback: false
+            )
+        }
+    }
+
+    private func jpegData(from image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
+    }
+
+    private func translateScreenOCR(_ text: String) {
+        guard let cursor = lastCursorPosition,
+              let target = lastTargetLanguage else { return }
+        let source = lastDetectedSource
+        Task { @MainActor in
+            await self.runOperation(
+                operation: .screenTranslate,
+                text: text,
+                cursorPosition: cursor,
+                detectedSource: source,
+                targetLanguage: target,
+                primary: self.settingsStore.activeProvider,
+                allowFallback: true
             )
         }
     }
@@ -520,6 +680,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func showScreenRecordingHelpAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Screen Recording access required"
+        alert.informativeText = """
+        Steps:
+        1. Open System Settings → Privacy & Security → Screen Recording
+        2. Make sure LingoPop is in the list and the toggle is ON
+        3. Quit LingoPop completely (menu bar → Quit) and relaunch
+
+        macOS only reads the new permission after a full restart of the app.
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Quit LingoPop")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        switch response {
+        case .alertFirstButtonReturn:
+            PermissionsManager.openScreenRecordingSettings()
+        case .alertSecondButtonReturn:
+            NSApp.terminate(nil)
+        default:
+            break
+        }
+    }
+
     @objc private func operationMenuAction(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let op = AIOperation(rawValue: raw) else { return }
@@ -601,6 +788,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         return max(340, maxContent + horizontalPadding) + 40
+    }
+
+    @objc private func recheckAccessibilityAction() {
+        PermissionsManager.requestAccessibility()
     }
 
     @objc private func quitAction() {
