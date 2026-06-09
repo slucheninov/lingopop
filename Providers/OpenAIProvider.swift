@@ -23,11 +23,16 @@ struct OpenAIProvider: AIProvider {
 
     private struct ResponseBody: Decodable {
         let choices: [Choice]
+        let usage: Usage?
         struct Choice: Decodable {
             let message: Message
             struct Message: Decodable {
                 let content: String?
             }
+        }
+        struct Usage: Decodable {
+            let prompt_tokens: Int
+            let completion_tokens: Int
         }
     }
 
@@ -64,7 +69,7 @@ struct OpenAIProvider: AIProvider {
         }
     }
 
-    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> String {
+    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/chat/completions") else {
@@ -105,10 +110,10 @@ struct OpenAIProvider: AIProvider {
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            guard let text = decoded.choices.first?.message.content, !text.isEmpty else {
-                throw TranslationError.emptyResponse
-            }
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { throw TranslationError.emptyResponse }
+            let usage = decoded.usage.map { TokenUsage(inputTokens: $0.prompt_tokens, outputTokens: $0.completion_tokens) }
+            return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
             throw error
         } catch {
@@ -116,7 +121,7 @@ struct OpenAIProvider: AIProvider {
         }
     }
 
-    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
+    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/chat/completions") else {
@@ -153,10 +158,10 @@ struct OpenAIProvider: AIProvider {
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            guard let text = decoded.choices.first?.message.content, !text.isEmpty else {
-                throw TranslationError.emptyResponse
-            }
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { throw TranslationError.emptyResponse }
+            let usage = decoded.usage.map { TokenUsage(inputTokens: $0.prompt_tokens, outputTokens: $0.completion_tokens) }
+            return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
             throw error
         } catch {

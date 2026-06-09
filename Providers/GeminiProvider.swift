@@ -27,6 +27,7 @@ struct GeminiProvider: AIProvider {
 
     private struct ResponseBody: Decodable {
         let candidates: [Candidate]
+        let usageMetadata: UsageMetadata?
         struct Candidate: Decodable {
             let content: Content?
             struct Content: Decodable {
@@ -35,6 +36,10 @@ struct GeminiProvider: AIProvider {
                     let text: String?
                 }
             }
+        }
+        struct UsageMetadata: Decodable {
+            let promptTokenCount: Int
+            let candidatesTokenCount: Int?
         }
     }
 
@@ -70,7 +75,7 @@ struct GeminiProvider: AIProvider {
         }
     }
 
-    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> String {
+    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
         let encodedKey = config.apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? config.apiKey
@@ -110,8 +115,12 @@ struct GeminiProvider: AIProvider {
             let text = decoded.candidates
                 .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
                 .joined()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let usage = decoded.usageMetadata.map {
+                TokenUsage(inputTokens: $0.promptTokenCount, outputTokens: $0.candidatesTokenCount ?? 0)
+            }
+            return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
             throw error
         } catch {
@@ -119,7 +128,7 @@ struct GeminiProvider: AIProvider {
         }
     }
 
-    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
+    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
         let encodedKey = config.apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? config.apiKey
@@ -156,8 +165,12 @@ struct GeminiProvider: AIProvider {
             let text = decoded.candidates
                 .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
                 .joined()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
-            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let usage = decoded.usageMetadata.map {
+                TokenUsage(inputTokens: $0.promptTokenCount, outputTokens: $0.candidatesTokenCount ?? 0)
+            }
+            return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
             throw error
         } catch {

@@ -23,9 +23,14 @@ struct ClaudeProvider: AIProvider {
 
     private struct ResponseBody: Decodable {
         let content: [ContentBlock]
+        let usage: Usage?
         struct ContentBlock: Decodable {
             let type: String
             let text: String?
+        }
+        struct Usage: Decodable {
+            let input_tokens: Int
+            let output_tokens: Int
         }
     }
 
@@ -67,7 +72,7 @@ struct ClaudeProvider: AIProvider {
         }
     }
 
-    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> String {
+    func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/messages") else {
@@ -111,7 +116,8 @@ struct ClaudeProvider: AIProvider {
             let text = decoded.content.compactMap { $0.text }.joined()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
-            return text
+            let usage = decoded.usage.map { TokenUsage(inputTokens: $0.input_tokens, outputTokens: $0.output_tokens) }
+            return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
             throw error
         } catch {
@@ -119,7 +125,7 @@ struct ClaudeProvider: AIProvider {
         }
     }
 
-    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
+    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/messages") else {
@@ -156,8 +162,10 @@ struct ClaudeProvider: AIProvider {
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
             let text = decoded.content.compactMap { $0.text }.joined()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
-            return text
+            let usage = decoded.usage.map { TokenUsage(inputTokens: $0.input_tokens, outputTokens: $0.output_tokens) }
+            return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
             throw error
         } catch {

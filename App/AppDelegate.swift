@@ -10,9 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let popup = PopupWindow()
     private let settingsStore = SettingsStore()
     private let historyStore = TranslationHistoryStore()
+    private let usageStore = UsageStore()
     private let statusController = StatusItemController()
     private lazy var settingsWindow = SettingsWindowController(
         store: settingsStore,
+        usageStore: usageStore,
         providerImpls: translationService.providers
     )
     private lazy var historyWindow = HistoryWindowController(store: historyStore)
@@ -27,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             PermissionsManager.requestAccessibility()
         }
         migrateLegacyDevConfigIfNeeded()
+        translationService.usageStore = usageStore
         observeSettings()
         popup.state.onRetry = { [weak self] provider in
             self?.retryWith(provider)
@@ -92,6 +95,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if enabled {
                     self?.settingsStore.reloadFromCloudIfNewer()
                     self?.historyStore.reloadFromCloudIfNewer()
+                }
+            }
+            .store(in: &cancellables)
+
+        settingsStore.$iCloudSync
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                self?.usageStore.iCloudEnabled = enabled
+                if enabled {
+                    self?.usageStore.reloadFromCloudIfNewer()
                 }
             }
             .store(in: &cancellables)
@@ -513,10 +526,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     guard let jpegData = jpegData(from: nsImage) else {
                         throw TranslationError.emptyResponse
                     }
-                    let translated = try await impl.executeVision(image: jpegData, targetLanguage: target, config: config)
+                    let providerResult = try await impl.executeVision(image: jpegData, targetLanguage: target, config: config)
+                    translationService.recordUsage(providerResult.usage, provider: provider, model: config.model, operation: .screenTranslate)
                     let result = TranslationResult(
                         original: lastCapturedText ?? "",
-                        translated: translated,
+                        translated: providerResult.text,
                         targetLanguage: target,
                         provider: provider,
                         operation: .screenTranslate

@@ -8,7 +8,7 @@ struct GoogleFreeProvider: AIProvider {
     let requiresApiKey: Bool = false
     let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
-    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
+    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard operation == .translate || operation == .screenTranslate else {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
@@ -57,6 +57,6 @@ struct GoogleFreeProvider: AIProvider {
 
         let result = translated.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { throw TranslationError.emptyResponse }
-        return result
+        return ProviderResult(text: result, usage: nil)
     }
 }

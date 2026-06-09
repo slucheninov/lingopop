@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
 
     @ObservedObject var store: SettingsStore
+    @ObservedObject var usageStore: UsageStore
     let providerImpls: [ProviderType: AIProvider]
 
     var body: some View {
@@ -13,6 +14,8 @@ struct SettingsView: View {
                 .tabItem { Label("Providers", systemImage: "cpu") }
             HotkeySettingsTab(store: store)
                 .tabItem { Label("Shortcuts", systemImage: "command") }
+            UsageSettingsTab(store: usageStore)
+                .tabItem { Label("Usage", systemImage: "chart.bar.xaxis") }
             AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }

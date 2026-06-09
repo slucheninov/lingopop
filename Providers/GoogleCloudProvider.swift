@@ -25,7 +25,7 @@ struct GoogleCloudProvider: AIProvider {
         let data: DataField
     }
 
-    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> String {
+    func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard operation == .translate || operation == .screenTranslate else {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
@@ -72,7 +72,7 @@ struct GoogleCloudProvider: AIProvider {
             guard let translated = decoded.data.translations.first?.translatedText, !translated.isEmpty else {
                 throw TranslationError.emptyResponse
             }
-            return translated.trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProviderResult(text: translated.trimmingCharacters(in: .whitespacesAndNewlines), usage: nil)
         } catch let error as TranslationError {
             throw error
         } catch {

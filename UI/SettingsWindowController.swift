@@ -6,10 +6,12 @@ final class SettingsWindowController {
 
     private var window: NSWindow?
     private let store: SettingsStore
+    private let usageStore: UsageStore
     private let providerImpls: [ProviderType: AIProvider]
 
-    init(store: SettingsStore, providerImpls: [ProviderType: AIProvider]) {
+    init(store: SettingsStore, usageStore: UsageStore, providerImpls: [ProviderType: AIProvider]) {
         self.store = store
+        self.usageStore = usageStore
         self.providerImpls = providerImpls
     }
 
@@ -20,7 +22,11 @@ final class SettingsWindowController {
             return
         }
 
-        let host = NSHostingController(rootView: SettingsView(store: store, providerImpls: providerImpls))
+        let host = NSHostingController(rootView: SettingsView(
+            store: store,
+            usageStore: usageStore,
+            providerImpls: providerImpls
+        ))
         let window = NSWindow(contentViewController: host)
         window.title = "LingoPop Settings"
         window.styleMask = [.titled, .closable]
