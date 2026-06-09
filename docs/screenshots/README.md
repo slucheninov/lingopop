@@ -1,23 +1,27 @@
 # Screenshots
 
-Drop PNGs here and reference them from `../../README.md`. Recommended sizes:
-
-| Filename | What to capture | Approx. width |
-|---|---|---|
-| `popup.png` | The translation popup over some sample text | 1040–1240 px (will render at ~520) |
-| `popup-screen.png` | Screen Translate OCR popup showing recognized text with Copy / Translate / Retry buttons | 800–1000 px |
-| `settings.png` | Settings window, ideally the Providers tab | 1440 px (renders at ~720) |
-| `menu.png` | Menu-bar drop-down showing the operations | 600 px |
-
-To take a clean screenshot:
+All screenshots are generated via native SwiftUI/AppKit rendering:
 
 ```bash
-# capture a window with a small drop shadow, save as PNG
-screencapture -W -o ~/Desktop/popup.png
+./scripts/generate-screenshots.sh
 ```
 
-Use the `-x` flag to suppress the camera-shutter sound:
+This compiles `scripts/render-screenshots.swift` (with `UI/HistoryMenuItemView.swift` for the menu) and writes PNGs using real `.regularMaterial`, `.formStyle(.grouped)`, `.bordered` buttons, and `NSVisualEffectView(material: .menu)`.
 
-```bash
-screencapture -W -o -x ~/Desktop/popup.png
-```
+## Screenshot inventory
+
+| Filename | Description |
+|---|---|
+| `popup.png` | Translation result popup over gradient desktop |
+| `menu.png` | Menu-bar dropdown showing operations and recent history |
+| `popup-screen.png` | Screen Translate OCR phase popup (Copy / Translate / Retry) |
+| `settings-main.png` | Settings → Main tab (language, popup, limits, startup, iCloud, permissions) |
+| `settings-providers.png` | Settings → Providers tab (sidebar + Claude detail) |
+| `settings-shortcuts.png` | Settings → Shortcuts tab (5 operations with hotkey pills) |
+| `settings-about.png` | Settings → About tab (app icon, version, Privacy Policy link) |
+| `history.png` | History window with search bar and fixture translation entries |
+
+## Old workflow (replaced)
+
+`scripts/capture-screenshots.sh` previously used `screencapture` with a timer delay.
+It has been replaced by the programmatic approach above.
