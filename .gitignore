@@ -21,6 +21,9 @@ Package.resolved
 # Local dev config (legacy)
 .lingopop-dev.json
 
+# Superpowers / agent session state
+.superpowers/
+
 # Editors
 .idea/
 .vscode/
