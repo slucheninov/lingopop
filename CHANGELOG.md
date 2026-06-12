@@ -6,7 +6,17 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
-### v0.2.15 — Screen Translate
+## v0.3.3 — 2026-06-12 Security hardening and code quality
+
+- Applied security hardening and code quality improvements from internal audit
+- Removed outdated statistics layout files; streamlined project structure
+
+## v0.3.2 — 2026-06-09 Usage Statistics
+
+- New **Usage Statistics** tab in Settings — shows translation counts by operation and by provider
+- Native screenshot pipeline for README documentation
+
+## v0.3.1 — 2026-06-07 Screen Translate
 
 - New **Screen Translate** operation: press the hotkey, drag a selection over any part of the screen, and LingoPop extracts the text using Apple's Vision OCR
 - Popup first shows the **recognized text** with Copy and Translate buttons — use it as a quick OCR tool without translating, or press Translate to run the full AI translation
@@ -16,7 +26,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 - Works reliably across multiple monitors, including mixed Retina/non-Retina setups
 - Requires **Screen Recording** permission (TCC prompt shown on first use; Settings → Main shows permission status)
 
-### v0.2.14 — Explain operation
+## v0.2.14 — 2026-05-30 Explain operation
 
 - New **Explain** action in the popup: tap it to get a concise explanation of any translated or rewritten text, right in the same popup window
 - Explanation is generated in the configured target language and covers meaning, context, and key nuances
@@ -43,9 +53,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## v0.2.6 - 2026-05-18 Fix: add unique identifier to ProviderDetailView for improved state management.
 
+## v0.2.5 — 2026-05-17 Improved popup layout and menu hotkeys
+
+- Enhanced menu item handling for hotkeys — access recent translations more reliably from the menu bar
+- Improved PopupView layout and button styles for better usability
+
+## v0.2.4 — 2026-05-17 Dynamic font sizes and refined prompts
+
+- Popup now supports **dynamic font sizes** — text adapts to system accessibility settings
+- Improved layout in PopupView for longer content
+- Refined AI operation prompts for greater clarity and specificity
+
 ## v0.2.3 — 2026-05-17 Implement retranslation feature in PopupView and PopupState, allowing users to select a target language for translations; enhance AppDelegate to handle retranslation logic.
 
 ## v0.2.2 — 2026-05-17 Update project versioning to 0.2.2; refactor use dynamic versioning.
+
+## v0.2.1 — 2026-05-17 Recent translations in menu bar
+
+- Recent translations now appear directly in the menu bar popup — access previous results at a glance
+- README updated to highlight the new feature
 
 ## [0.1.0] — Initial public release
 
