@@ -8,11 +8,21 @@ struct GoogleFreeProvider: AIProvider {
     let requiresApiKey: Bool = false
     let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
+
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard operation == .translate || operation == .screenTranslate else {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         let target = LanguageCodes.code(for: config.targetLanguage)
         var components = URLComponents(string: base.trimmingCharacters(in: ["/"]) + "/translate_a/single")
         components?.queryItems = [
@@ -30,18 +40,7 @@ struct GoogleFreeProvider: AIProvider {
         request.httpMethod = "GET"
         request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         guard let json = try? JSONSerialization.jsonObject(with: data) else {
             throw TranslationError.decoding("Invalid JSON")

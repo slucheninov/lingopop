@@ -19,6 +19,7 @@ enum TextCapture {
         let pasteboard = NSPasteboard.general
         let previousChangeCount = pasteboard.changeCount
         let savedItems = snapshot(of: pasteboard)
+        defer { restore(items: savedItems, to: pasteboard) }
 
         simulateCommandC()
 
@@ -26,8 +27,6 @@ enum TextCapture {
             pasteboard: pasteboard,
             previousChangeCount: previousChangeCount
         )
-
-        restore(items: savedItems, to: pasteboard)
 
         guard let text = captured, !text.isEmpty else {
             throw TextCaptureError.emptySelection
@@ -45,18 +44,23 @@ enum TextCapture {
         cKeyUp?.post(tap: .cgAnnotatedSessionEventTap)
     }
 
+    private enum Timing {
+        /// Polling timeout waiting for clipboard change after Cmd+C
+        static let clipboardPollTimeout: UInt64 = 300_000_000  // 300ms
+        /// Interval between clipboard change-count polls
+        static let clipboardPollInterval: UInt64 = 10_000_000  // 10ms
+    }
+
     private static func waitForClipboardUpdate(
         pasteboard: NSPasteboard,
-        previousChangeCount: Int,
-        timeout: TimeInterval = 0.3,
-        pollInterval: TimeInterval = 0.02
+        previousChangeCount: Int
     ) async throws -> String? {
-        let deadline = Date().addingTimeInterval(timeout)
+        let deadline = Date().addingTimeInterval(Double(Timing.clipboardPollTimeout) / 1_000_000_000)
         while Date() < deadline {
             if pasteboard.changeCount != previousChangeCount {
                 return pasteboard.string(forType: .string)
             }
-            try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+            try await Task.sleep(nanoseconds: Timing.clipboardPollInterval)
         }
         throw TextCaptureError.clipboardTimeout
     }

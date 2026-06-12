@@ -25,6 +25,8 @@ final class SettingsStore: ObservableObject {
         var useAutoDetect: Bool?
         var languagePairs: [String: String]?
         var iCloudSync: Bool?
+        var syncHistoryToiCloud: Bool?
+        var autoCopyOCR: Bool?
     }
 
     static let autoLanguageSentinel = "Auto"
@@ -44,11 +46,14 @@ final class SettingsStore: ObservableObject {
     @Published var useAutoDetect: Bool
     @Published var languagePairs: [String: String]
     @Published var iCloudSync: Bool
+    @Published var syncHistoryToiCloud: Bool
+    @Published var autoCopyOCR: Bool
+    @Published var apiKeySaveError: String? = nil
 
     private var saveSubscription: AnyCancellable?
     private var pollTimer: Timer?
     private var lastCloudMTime: Date?
-    private var suppressAutoSave = false
+    private var suppressAutoSaveBefore: Date = .distantPast
     private let log = Logger(subsystem: "com.lingopop.app", category: "SettingsStore")
 
     init(defaults: UserDefaults = .standard) {
@@ -81,6 +86,8 @@ final class SettingsStore: ObservableObject {
             "English": "Ukrainian"
         ]
         self.iCloudSync = loaded.persisted.iCloudSync ?? CloudStorage.isAvailable
+        self.syncHistoryToiCloud = loaded.persisted.syncHistoryToiCloud ?? false
+        self.autoCopyOCR = loaded.persisted.autoCopyOCR ?? true
         self.lastCloudMTime = loaded.cloudMTime
         installAutoSave()
         installCloudPolling()
@@ -98,12 +105,14 @@ final class SettingsStore: ObservableObject {
             $maxHistoryCount.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $useAutoDetect.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $languagePairs.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            $iCloudSync.dropFirst().map { _ in () }.eraseToAnyPublisher()
+            $iCloudSync.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            $syncHistoryToiCloud.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            $autoCopyOCR.dropFirst().map { _ in () }.eraseToAnyPublisher()
         ]
         saveSubscription = Publishers.MergeMany(publishers)
             .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
             .sink { [weak self] in
-                guard let self, !self.suppressAutoSave else { return }
+                guard let self, Date() > self.suppressAutoSaveBefore else { return }
                 self.save()
             }
     }
@@ -126,8 +135,7 @@ final class SettingsStore: ObservableObject {
     }
 
     private func apply(_ p: Persisted) {
-        suppressAutoSave = true
-        defer { suppressAutoSave = false }
+        suppressAutoSaveBefore = Date().addingTimeInterval(0.3)
         if activeProvider != p.activeProvider { activeProvider = p.activeProvider }
         let pf = p.fallbacks ?? [:]
         if fallbacks != pf { fallbacks = pf }
@@ -141,6 +149,8 @@ final class SettingsStore: ObservableObject {
         if let a = p.useAutoDetect, useAutoDetect != a { useAutoDetect = a }
         if let pairs = p.languagePairs, languagePairs != pairs { languagePairs = pairs }
         if let s = p.iCloudSync, iCloudSync != s { iCloudSync = s }
+        if let s = p.syncHistoryToiCloud, syncHistoryToiCloud != s { syncHistoryToiCloud = s }
+        if let a = p.autoCopyOCR, autoCopyOCR != a { autoCopyOCR = a }
     }
 
     func save() {
@@ -156,7 +166,9 @@ final class SettingsStore: ObservableObject {
             maxHistoryCount: maxHistoryCount,
             useAutoDetect: useAutoDetect,
             languagePairs: languagePairs,
-            iCloudSync: iCloudSync
+            iCloudSync: iCloudSync,
+            syncHistoryToiCloud: syncHistoryToiCloud,
+            autoCopyOCR: autoCopyOCR
         )
         let encoder = JSONEncoder()
         guard let data = try? encoder.encode(persisted) else { return }
@@ -195,7 +207,9 @@ final class SettingsStore: ObservableObject {
     }
 
     func settings(for provider: ProviderType) -> ProviderSettings {
-        providers[provider] ?? Self.makeDefault().providers[provider]!
+        if let s = providers[provider] { return s }
+        if let s = Self.makeDefault().providers[provider] { return s }
+        return ProviderSettings(baseURL: "", model: "")
     }
 
     func updateSettings(_ settings: ProviderSettings, for provider: ProviderType) {
@@ -215,8 +229,13 @@ final class SettingsStore: ObservableObject {
         let storageKey = keychainKey(for: provider)
         if trimmed.isEmpty {
             KeychainService.delete(storageKey)
+            apiKeySaveError = nil
         } else {
-            KeychainService.set(trimmed, for: storageKey)
+            if KeychainService.set(trimmed, for: storageKey) {
+                apiKeySaveError = nil
+            } else {
+                apiKeySaveError = "Failed to save API key. Please try again."
+            }
         }
     }
 

@@ -1,5 +1,16 @@
 import Foundation
 
+func redactedURL(_ urlString: String) -> String {
+    guard var components = URLComponents(string: urlString) else { return "<redacted-url>" }
+    let sensitiveKeys = ["key", "api_key", "apiKey", "apikey"]
+    components.queryItems = components.queryItems?.map { item in
+        sensitiveKeys.contains(item.name.lowercased())
+            ? URLQueryItem(name: item.name, value: "REDACTED")
+            : item
+    }
+    return components.string ?? "<redacted-url>"
+}
+
 struct TranslationResult {
     let original: String
     let translated: String
@@ -17,6 +28,8 @@ enum TranslationError: LocalizedError {
     case emptyResponse
     case network(Error)
     case operationNotSupported(provider: ProviderType, operation: AIOperation)
+    case invalidConfiguration(String)
+    case providerNotFound(ProviderType)
 
     var userSummary: String {
         switch self {
@@ -34,6 +47,10 @@ enum TranslationError: LocalizedError {
             return "Network error. Check your connection and try again."
         case .operationNotSupported(let provider, let operation):
             return "\(provider.rawValue) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini) in Settings → Provider."
+        case .invalidConfiguration(let msg):
+            return "Invalid configuration: \(msg)"
+        case .providerNotFound(let type):
+            return "Provider \(type.rawValue) is not registered. Please report this as a bug."
         }
     }
 

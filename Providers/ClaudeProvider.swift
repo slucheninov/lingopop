@@ -23,6 +23,7 @@ struct ClaudeProvider: AIProvider {
 
     private struct ResponseBody: Decodable {
         let content: [ContentBlock]
+        let stop_reason: String?
         let usage: Usage?
         struct ContentBlock: Decodable {
             let type: String
@@ -35,6 +36,15 @@ struct ClaudeProvider: AIProvider {
     }
 
     var supportsVision: Bool { true }
+
+    private let anthropicAPIVersion = "2023-06-01"
+
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
 
     private struct VisionRequestBody: Encodable {
         let model: String
@@ -75,18 +85,21 @@ struct ClaudeProvider: AIProvider {
     func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/messages") else {
             throw TranslationError.invalidURL
         }
 
         let base64 = image.base64EncodedString()
-        let prompt = "Extract all text from this image and translate it into \(targetLanguage). Output only the translated text. No explanations, no preamble."
+        let prompt = PromptBuilder.visionPrompt(targetLanguage: targetLanguage)
 
         let body = VisionRequestBody(
             model: config.model,
-            max_tokens: 2048,
+            max_tokens: 4096,
             messages: [.init(role: "user", content: [
-                .image(base64: base64, mediaType: "image/jpeg"),
+                .image(base64: base64, mediaType: mimeType(for: image)),
                 .text(prompt)
             ])]
         )
@@ -95,27 +108,19 @@ struct ClaudeProvider: AIProvider {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue(anthropicAPIVersion, forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            let text = decoded.content.compactMap { $0.text }.joined()
+            var text = decoded.content.compactMap { $0.text }.joined()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
+            if decoded.stop_reason == "max_tokens" {
+                text += "\n\n⚠️ Response was truncated (max tokens reached)"
+            }
             let usage = decoded.usage.map { TokenUsage(inputTokens: $0.input_tokens, outputTokens: $0.output_tokens) }
             return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
@@ -128,13 +133,16 @@ struct ClaudeProvider: AIProvider {
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/messages") else {
             throw TranslationError.invalidURL
         }
 
         let body = RequestBody(
             model: config.model,
-            max_tokens: 2048,
+            max_tokens: 4096,
             system: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage),
             messages: [.init(role: "user", content: PromptBuilder.userContent(text))]
         )
@@ -143,27 +151,19 @@ struct ClaudeProvider: AIProvider {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(config.apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue(anthropicAPIVersion, forHTTPHeaderField: "anthropic-version")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            let text = decoded.content.compactMap { $0.text }.joined()
+            var text = decoded.content.compactMap { $0.text }.joined()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
+            if decoded.stop_reason == "max_tokens" {
+                text += "\n\n⚠️ Response was truncated (max tokens reached)"
+            }
             let usage = decoded.usage.map { TokenUsage(inputTokens: $0.input_tokens, outputTokens: $0.output_tokens) }
             return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {

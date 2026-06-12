@@ -10,7 +10,8 @@ final class TranslationHistoryStore: ObservableObject {
 
     @Published private(set) var entries: [TranslationHistoryEntry] = []
 
-    var iCloudEnabled: Bool = true
+    var iCloudEnabled: Bool = false
+    var syncHistoryToiCloud: Bool = false
     private var lastCloudMTime: Date?
     private var pollTimer: Timer?
 
@@ -21,7 +22,8 @@ final class TranslationHistoryStore: ObservableObject {
     }
 
     private func loadInitial() {
-        if let read = CloudStorage.read(cloudFileName),
+        if iCloudEnabled, syncHistoryToiCloud, CloudStorage.isAvailable,
+           let read = CloudStorage.read(cloudFileName),
            let decoded = try? JSONDecoder().decode([TranslationHistoryEntry].self, from: read.data) {
             entries = decoded
             lastCloudMTime = read.modified
@@ -41,7 +43,7 @@ final class TranslationHistoryStore: ObservableObject {
     }
 
     func reloadFromCloudIfNewer() {
-        guard iCloudEnabled, CloudStorage.isAvailable else { return }
+        guard iCloudEnabled, syncHistoryToiCloud, CloudStorage.isAvailable else { return }
         guard let cloudMTime = CloudStorage.modificationDate(cloudFileName) else { return }
         if let last = lastCloudMTime, cloudMTime <= last { return }
         guard let read = CloudStorage.read(cloudFileName),
@@ -87,7 +89,7 @@ final class TranslationHistoryStore: ObservableObject {
     private func persist() {
         guard let data = try? JSONEncoder().encode(entries) else { return }
         defaults.set(data, forKey: defaultsKey)
-        if iCloudEnabled, CloudStorage.isAvailable {
+        if iCloudEnabled, syncHistoryToiCloud, CloudStorage.isAvailable {
             if let mtime = CloudStorage.write(cloudFileName, data: data) {
                 lastCloudMTime = mtime
             }

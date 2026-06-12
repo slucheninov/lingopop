@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class HistoryWindowController {
+final class HistoryWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private let store: TranslationHistoryStore
@@ -23,9 +23,14 @@ final class HistoryWindowController {
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 540, height: 480))
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
     }
 }

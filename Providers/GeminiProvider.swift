@@ -30,6 +30,7 @@ struct GeminiProvider: AIProvider {
         let usageMetadata: UsageMetadata?
         struct Candidate: Decodable {
             let content: Content?
+            let finishReason: String?
             struct Content: Decodable {
                 let parts: [Part]?
                 struct Part: Decodable {
@@ -44,6 +45,13 @@ struct GeminiProvider: AIProvider {
     }
 
     var supportsVision: Bool { true }
+
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
 
     private struct VisionRequestBody: Encodable {
         let contents: [VisionContent]
@@ -78,16 +86,19 @@ struct GeminiProvider: AIProvider {
     func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         let encodedKey = config.apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? config.apiKey
         let urlString = "\(base.trimmingCharacters(in: ["/"]))/v1beta/models/\(config.model):generateContent?key=\(encodedKey)"
         guard let url = URL(string: urlString) else { throw TranslationError.invalidURL }
 
         let base64 = image.base64EncodedString()
-        let prompt = "Extract all text from this image and translate it into \(targetLanguage). Output only the translated text. No explanations, no preamble."
+        let prompt = PromptBuilder.visionPrompt(targetLanguage: targetLanguage)
 
         let body = VisionRequestBody(contents: [
             .init(role: "user", parts: [
-                .inlineData(mimeType: "image/jpeg", data: base64),
+                .inlineData(mimeType: mimeType(for: image), data: base64),
                 .text(prompt)
             ])
         ])
@@ -97,26 +108,18 @@ struct GeminiProvider: AIProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            let text = decoded.candidates
+            var text = decoded.candidates
                 .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
                 .joined()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
+            if decoded.candidates.first?.finishReason == "MAX_TOKENS" {
+                text += "\n\n⚠️ Response was truncated (max tokens reached)"
+            }
             let usage = decoded.usageMetadata.map {
                 TokenUsage(inputTokens: $0.promptTokenCount, outputTokens: $0.candidatesTokenCount ?? 0)
             }
@@ -131,6 +134,9 @@ struct GeminiProvider: AIProvider {
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         let encodedKey = config.apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? config.apiKey
         let urlString = "\(base.trimmingCharacters(in: ["/"]))/v1beta/models/\(config.model):generateContent?key=\(encodedKey)"
         guard let url = URL(string: urlString) else {
@@ -147,26 +153,18 @@ struct GeminiProvider: AIProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            let text = decoded.candidates
+            var text = decoded.candidates
                 .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
                 .joined()
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
+            if decoded.candidates.first?.finishReason == "MAX_TOKENS" {
+                text += "\n\n⚠️ Response was truncated (max tokens reached)"
+            }
             let usage = decoded.usageMetadata.map {
                 TokenUsage(inputTokens: $0.promptTokenCount, outputTokens: $0.candidatesTokenCount ?? 0)
             }

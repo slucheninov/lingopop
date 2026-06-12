@@ -42,70 +42,86 @@ final class CaptureOverlayWindow: NSPanel {
     static func runSelection() async throws -> CGRect {
         let windows = NSScreen.screens.map { CaptureOverlayWindow(screen: $0) }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            var startPoint: NSPoint?
-            var selectionRect: CGRect?
-            var monitor: Any?
-            var finished = false
+        // Captured by both the continuation block and the cancellation handler.
+        var monitor: Any?
+        var continuation: CheckedContinuation<CGRect, Error>?
 
-            func finish(_ result: Result<CGRect, Error>) {
-                guard !finished else { return }
-                finished = true
-                if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
-                for w in windows { w.orderOut(nil) }
-                NSCursor.arrow.set()
-                continuation.resume(with: result)
-            }
+        func teardown() {
+            if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+            for w in windows { w.orderOut(nil) }
+            NSCursor.arrow.set()
+        }
 
-            func updateDrawing() {
-                for w in windows {
-                    w.drawingView.selectionScreenRect = selectionRect
-                    w.drawingView.screenOrigin = w.ownScreen.frame.origin
-                    w.drawingView.setNeedsDisplay(w.drawingView.bounds)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { cont in
+                continuation = cont
+                var startPoint: NSPoint?
+                var selectionRect: CGRect?
+                var finished = false
+
+                func finish(_ result: Result<CGRect, Error>) {
+                    guard !finished else { return }
+                    finished = true
+                    teardown()
+                    cont.resume(with: result)
                 }
-            }
 
-            monitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .keyDown]
-            ) { event in
-                switch event.type {
-                case .leftMouseDown:
-                    startPoint = NSEvent.mouseLocation
-                    selectionRect = nil
-                    updateDrawing()
-
-                case .leftMouseDragged:
-                    guard let start = startPoint else { return event }
-                    let cur = NSEvent.mouseLocation
-                    selectionRect = CGRect(
-                        x: min(start.x, cur.x),
-                        y: min(start.y, cur.y),
-                        width: abs(cur.x - start.x),
-                        height: abs(cur.y - start.y)
-                    )
-                    updateDrawing()
-
-                case .leftMouseUp:
-                    if let rect = selectionRect, rect.width >= 10, rect.height >= 10 {
-                        finish(.success(rect))
-                    } else {
-                        finish(.failure(CaptureOverlayError.cancelled))
+                func updateDrawing() {
+                    for w in windows {
+                        w.drawingView.selectionScreenRect = selectionRect
+                        w.drawingView.screenOrigin = w.ownScreen.frame.origin
+                        w.drawingView.setNeedsDisplay(w.drawingView.bounds)
                     }
-                    return nil
-
-                case .keyDown where event.keyCode == 53:
-                    finish(.failure(CaptureOverlayError.cancelled))
-                    return nil
-
-                default: break
                 }
-                return event
-            }
 
-            NSApp.activate(ignoringOtherApps: true)
-            NSCursor.crosshair.set()
-            for w in windows {
-                w.makeKeyAndOrderFront(nil)
+                monitor = NSEvent.addLocalMonitorForEvents(
+                    matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .keyDown]
+                ) { event in
+                    switch event.type {
+                    case .leftMouseDown:
+                        startPoint = NSEvent.mouseLocation
+                        selectionRect = nil
+                        updateDrawing()
+
+                    case .leftMouseDragged:
+                        guard let start = startPoint else { return event }
+                        let cur = NSEvent.mouseLocation
+                        selectionRect = CGRect(
+                            x: min(start.x, cur.x),
+                            y: min(start.y, cur.y),
+                            width: abs(cur.x - start.x),
+                            height: abs(cur.y - start.y)
+                        )
+                        updateDrawing()
+
+                    case .leftMouseUp:
+                        if let rect = selectionRect, rect.width >= 10, rect.height >= 10 {
+                            finish(.success(rect))
+                        } else {
+                            finish(.failure(CaptureOverlayError.cancelled))
+                        }
+                        return nil
+
+                    case .keyDown where event.keyCode == 53:
+                        finish(.failure(CaptureOverlayError.cancelled))
+                        return nil
+
+                    default: break
+                    }
+                    return event
+                }
+
+                NSApp.activate(ignoringOtherApps: true)
+                NSCursor.crosshair.set()
+                for w in windows {
+                    w.makeKeyAndOrderFront(nil)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                teardown()
+                continuation?.resume(throwing: CancellationError())
+                continuation = nil
             }
         }
     }

@@ -36,12 +36,12 @@ openssl req -x509 -newkey rsa:2048 -nodes \
     -config "$WORK_DIR/cert.conf"
 
 P12_PASS="lingopop"
-openssl pkcs12 -export \
+CERT_PASS="$P12_PASS" openssl pkcs12 -export \
     -inkey "$WORK_DIR/key.pem" \
     -in "$WORK_DIR/cert.pem" \
     -out "$WORK_DIR/cert.p12" \
     -name "$CERT_NAME" \
-    -password "pass:$P12_PASS"
+    -passout "env:CERT_PASS"
 
 LOGIN_KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 

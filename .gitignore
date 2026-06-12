@@ -16,13 +16,21 @@ dist/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # Local dev config (legacy)
 .lingopop-dev.json
 
 # Superpowers / agent session state
 .superpowers/
+
+# Sensitive files — never commit
+*.pem
+*.p12
+*.key
+*.env
+.env.*
+*.cer
+*.mobileprovision
 
 # Editors
 .idea/

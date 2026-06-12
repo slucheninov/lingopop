@@ -9,9 +9,12 @@ final class PopupWindow {
     private var clickMonitor: Any?
     private var keyMonitor: Any?
     private var phaseCancellable: AnyCancellable?
+    private var isClosing: Bool = false
     let state = PopupState()
+    var onClose: (() -> Void)?
 
     func show(near point: NSPoint) {
+        isClosing = false
         let panel = self.panel ?? makePanel()
         self.panel = panel
         let isNewlyVisible = !panel.isVisible
@@ -32,14 +35,18 @@ final class PopupWindow {
 
     func close() {
         removeEventMonitors()
+        onClose?()
         guard let panel, panel.isVisible else { return }
+        isClosing = true
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.15
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
+            guard self?.isClosing == true else { return }
             panel.orderOut(nil)
             panel.alphaValue = 1
+            self?.isClosing = false
         })
     }
 
@@ -77,7 +84,7 @@ final class PopupWindow {
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                DispatchQueue.main.async { self?.resizeToFit() }
+                self?.resizeToFit()
             }
 
         return panel
@@ -98,8 +105,10 @@ final class PopupWindow {
     private func position(_ panel: NSPanel, near point: NSPoint) {
         panel.layoutIfNeeded()
         let size = panel.contentView?.fittingSize ?? NSSize(width: 360, height: 120)
-        let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main
-        let bounds = screen?.visibleFrame ?? .zero
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        let bounds = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
 
         var origin = NSPoint(x: point.x + 12, y: point.y - size.height - 12)
         if origin.x + size.width > bounds.maxX {

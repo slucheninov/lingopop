@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private let store: SettingsStore
@@ -31,9 +31,14 @@ final class SettingsWindowController {
         window.title = "LingoPop Settings"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         self.window = window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
     }
 }

@@ -49,8 +49,7 @@ echo "→ Architecture(s): $ARCHS_FLAG"
 
 xcodegen generate
 
-BUILD_DIR="/tmp/lingo-pop-release"
-rm -rf "$BUILD_DIR"
+BUILD_DIR=$(mktemp -d)
 
 xcodebuild \
     -project LingoPop.xcodeproj \
@@ -74,7 +73,7 @@ DIST_DIR="$PROJECT_DIR/dist"
 mkdir -p "$DIST_DIR"
 
 STAGE_DIR="$(mktemp -d)"
-trap 'rm -rf "$STAGE_DIR"' EXIT
+trap 'rm -rf "$STAGE_DIR" "$BUILD_DIR" "${DMG_STAGE:-}"' EXIT
 STAGED_APP="$STAGE_DIR/LingoPop.app"
 cp -R "$SRC_APP" "$STAGED_APP"
 xattr -cr "$STAGED_APP"
@@ -85,7 +84,13 @@ else
     echo "Warning: 'LingoPop Dev' cert missing — signing ad-hoc. Run scripts/setup-cert.sh."
     SIGN_IDENTITY="-"
 fi
-codesign --force --deep \
+FRAMEWORKS_DIR="$STAGED_APP/Contents/Frameworks"
+if [ -d "$FRAMEWORKS_DIR" ]; then
+    find "$FRAMEWORKS_DIR" -name "*.framework" -o -name "*.dylib" | while read component; do
+        codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$component"
+    done
+fi
+codesign --force \
     --sign "$SIGN_IDENTITY" \
     --entitlements "$PROJECT_DIR/App/LingoPop.entitlements" \
     "$STAGED_APP" 2>&1 | tail -3
@@ -113,7 +118,6 @@ if [[ "$MAKE_DMG" -eq 1 ]]; then
         -srcfolder "$DMG_STAGE" \
         -ov -format UDZO \
         "$DMG_PATH" >/dev/null
-    rm -rf "$DMG_STAGE"
     echo "→ Wrote $DMG_PATH"
 fi
 

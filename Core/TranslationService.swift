@@ -14,12 +14,15 @@ final class TranslationService {
 
     weak var usageStore: UsageStore?
 
-    func provider(for type: ProviderType) -> AIProvider {
-        providers[type]!
+    func provider(for type: ProviderType) throws -> AIProvider {
+        guard let provider = providers[type] else {
+            throw TranslationError.providerNotFound(type)
+        }
+        return provider
     }
 
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> TranslationResult {
-        let provider = provider(for: config.providerType)
+        let provider = try provider(for: config.providerType)
         let providerResult = try await provider.execute(
             text: text,
             operation: operation,

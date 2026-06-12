@@ -3,7 +3,7 @@ import Foundation
 struct DeepLProvider: AIProvider {
 
     let type: ProviderType = .deepl
-    let defaultBaseURL = "https://api-free.deepl.com"
+    let defaultBaseURL = "https://api.deepl.com"
     let availableModels: [String] = []
     let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
@@ -11,6 +11,13 @@ struct DeepLProvider: AIProvider {
         let text: [String]
         let target_lang: String
     }
+
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
 
     private struct ResponseBody: Decodable {
         let translations: [Translation]
@@ -24,13 +31,21 @@ struct DeepLProvider: AIProvider {
             throw TranslationError.operationNotSupported(provider: type, operation: operation)
         }
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
-        let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        let base: String
+        if config.baseURL.isEmpty {
+            base = config.apiKey.hasSuffix(":fx") ? "https://api-free.deepl.com" : "https://api.deepl.com"
+        } else {
+            base = config.baseURL
+        }
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v2/translate") else {
             throw TranslationError.invalidURL
         }
 
         let body = RequestBody(
-            text: [PromptBuilder.userContent(text)],
+            text: [text],
             target_lang: LanguageCodes.deepLCode(for: config.targetLanguage)
         )
 
@@ -40,18 +55,7 @@ struct DeepLProvider: AIProvider {
         request.setValue("DeepL-Auth-Key \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)

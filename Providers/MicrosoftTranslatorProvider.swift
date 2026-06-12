@@ -11,6 +11,13 @@ struct MicrosoftTranslatorProvider: AIProvider {
         let Text: String
     }
 
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
+
     private struct ResponseItem: Decodable {
         let translations: [Translation]
         struct Translation: Decodable {
@@ -25,6 +32,9 @@ struct MicrosoftTranslatorProvider: AIProvider {
         }
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         let targetCode = LanguageCodes.code(for: config.targetLanguage)
         var components = URLComponents(string: base.trimmingCharacters(in: ["/"]) + "/translate")
         components?.queryItems = [
@@ -35,7 +45,7 @@ struct MicrosoftTranslatorProvider: AIProvider {
             throw TranslationError.invalidURL
         }
 
-        let body = [RequestItem(Text: PromptBuilder.userContent(text))]
+        let body = [RequestItem(Text: text)]
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -46,18 +56,7 @@ struct MicrosoftTranslatorProvider: AIProvider {
         }
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode([ResponseItem].self, from: data)

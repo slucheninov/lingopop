@@ -82,6 +82,7 @@ private struct MainSettingsTab: View {
 
             Section("Startup") {
                 Toggle("Launch at login", isOn: $store.launchAtLogin)
+                Toggle("Auto-copy OCR/translation results to clipboard", isOn: $store.autoCopyOCR)
             }
 
             Section("iCloud Drive sync") {
@@ -92,9 +93,14 @@ private struct MainSettingsTab: View {
                         .font(.system(size: 12))
                     Spacer()
                 }
-                Toggle("Sync settings & history via iCloud Drive", isOn: $store.iCloudSync)
+                Toggle("Sync settings via iCloud Drive", isOn: $store.iCloudSync)
                     .disabled(!CloudStorage.isAvailable)
-                Text("Syncs settings and translation history between Macs signed into the same Apple ID. API keys stay local per machine.")
+                Toggle("Sync translation history to iCloud", isOn: $store.syncHistoryToiCloud)
+                    .disabled(!store.iCloudSync)
+                Text("History contains your translated texts. Disabled by default for privacy.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Syncs settings between Macs signed into the same Apple ID. API keys stay local per machine.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -304,6 +310,7 @@ private struct ProviderDetailView: View {
     @State private var referer: String = ""
     @State private var region: String = ""
     @State private var savedFlash: Bool = false
+    @State private var savedFlashTask: Task<Void, Never>?
     @State private var hasKey: Bool = false
 
     private var requiresKey: Bool { providerImpls[provider]?.requiresApiKey ?? true }
@@ -350,6 +357,11 @@ private struct ProviderDetailView: View {
                     }
                     SecureField(hasKey ? "Enter a new key to replace" : "Paste your API key", text: $apiKeyInput)
                         .textFieldStyle(.roundedBorder)
+                    if let error = store.apiKeySaveError {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
                     Text("Stored locally in an encrypted file (AES-GCM, machine-bound).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -447,6 +459,7 @@ private struct ProviderDetailView: View {
         }
         .formStyle(.grouped)
         .onAppear { reload() }
+        .onDisappear { savedFlashTask?.cancel() }
     }
 
     private var supportedOperationsLabel: String {
@@ -489,7 +502,8 @@ private struct ProviderDetailView: View {
             for: provider
         )
         savedFlash = true
-        Task {
+        savedFlashTask?.cancel()
+        savedFlashTask = Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await MainActor.run { savedFlash = false }
         }
@@ -584,8 +598,10 @@ private struct AboutTab: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 32)
-            Link("Privacy Policy", destination: URL(string: "https://github.com/slucheninov/lingopop/blob/main/PRIVACY.md")!)
-                .font(.system(size: 12))
+            if let privacyURL = URL(string: "https://github.com/slucheninov/lingopop/blob/main/PRIVACY.md") {
+                Link("Privacy Policy", destination: privacyURL)
+                    .font(.system(size: 12))
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

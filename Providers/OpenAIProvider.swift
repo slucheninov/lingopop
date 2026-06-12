@@ -26,6 +26,7 @@ struct OpenAIProvider: AIProvider {
         let usage: Usage?
         struct Choice: Decodable {
             let message: Message
+            let finish_reason: String?
             struct Message: Decodable {
                 let content: String?
             }
@@ -37,6 +38,13 @@ struct OpenAIProvider: AIProvider {
     }
 
     var supportsVision: Bool { true }
+
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        return URLSession(configuration: config)
+    }()
 
     private struct VisionRequestBody: Encodable {
         let model: String
@@ -72,13 +80,16 @@ struct OpenAIProvider: AIProvider {
     func executeVision(image: Data, targetLanguage: String, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/chat/completions") else {
             throw TranslationError.invalidURL
         }
 
         let base64 = image.base64EncodedString()
         let dataURI = "data:image/jpeg;base64,\(base64)"
-        let prompt = "Extract all text from this image and translate it into \(targetLanguage). Output only the translated text. No explanations, no preamble."
+        let prompt = PromptBuilder.visionPrompt(targetLanguage: targetLanguage)
 
         let body = VisionRequestBody(
             model: config.model,
@@ -95,23 +106,15 @@ struct OpenAIProvider: AIProvider {
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            guard let text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
+            guard var text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { throw TranslationError.emptyResponse }
+            if decoded.choices.first?.finish_reason == "length" {
+                text += "\n\n⚠️ Response was truncated (max tokens reached)"
+            }
             let usage = decoded.usage.map { TokenUsage(inputTokens: $0.prompt_tokens, outputTokens: $0.completion_tokens) }
             return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {
@@ -124,6 +127,9 @@ struct OpenAIProvider: AIProvider {
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
         guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
         let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
+        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
+            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
+        }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/v1/chat/completions") else {
             throw TranslationError.invalidURL
         }
@@ -143,23 +149,15 @@ struct OpenAIProvider: AIProvider {
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw TranslationError.network(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw TranslationError.decoding("Not an HTTP response")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw TranslationError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "", url: url.absoluteString)
-        }
+        let data = try await performRequest(request, session: Self.session)
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            guard let text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
+            guard var text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else { throw TranslationError.emptyResponse }
+            if decoded.choices.first?.finish_reason == "length" {
+                text += "\n\n⚠️ Response was truncated (max tokens reached)"
+            }
             let usage = decoded.usage.map { TokenUsage(inputTokens: $0.prompt_tokens, outputTokens: $0.completion_tokens) }
             return ProviderResult(text: text, usage: usage)
         } catch let error as TranslationError {

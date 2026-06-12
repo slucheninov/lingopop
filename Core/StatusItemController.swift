@@ -72,7 +72,6 @@ final class StatusItemController {
             Task { @MainActor in
                 self?.setSymbol(frames[index], tint: nil)
             }
-            _ = button
         }
     }
 

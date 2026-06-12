@@ -76,6 +76,12 @@ enum PromptBuilder {
     }
 
     static func userContent(_ text: String) -> String {
-        "<text>\n\(text)\n</text>"
+        let escaped = text.replacingOccurrences(of: "<", with: "&lt;")
+                          .replacingOccurrences(of: ">", with: "&gt;")
+        return "<text>\n\(escaped)\n</text>"
+    }
+
+    static func visionPrompt(targetLanguage: String) -> String {
+        "Extract all text from this image and translate it into \(targetLanguage). Output only the translated text. No explanations, no preamble."
     }
 }

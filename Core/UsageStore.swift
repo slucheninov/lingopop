@@ -33,7 +33,7 @@ final class UsageStore: ObservableObject {
     private let cloudFileName = "usage.json"
     private let defaults: UserDefaults
 
-    var iCloudEnabled: Bool = true
+    var iCloudEnabled: Bool = false
     private var lastCloudMTime: Date?
     private var pollTimer: Timer?
     private let log = Logger(subsystem: "com.lingopop.app", category: "UsageStore")
@@ -132,7 +132,8 @@ final class UsageStore: ObservableObject {
     }
 
     private func loadInitial() {
-        if let read = CloudStorage.read(cloudFileName),
+        if iCloudEnabled, CloudStorage.isAvailable,
+           let read = CloudStorage.read(cloudFileName),
            let decoded = try? JSONDecoder().decode([Record].self, from: read.data) {
             records = decoded
             lastCloudMTime = read.modified

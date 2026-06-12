@@ -15,10 +15,17 @@ enum ScreenCapture {
             throw ScreenCaptureError.tooSmall
         }
 
-        // AppKit coordinates have Y=0 at the bottom of the main screen.
+        // AppKit coordinates have Y=0 at the bottom of the primary screen.
         // CGWindowListCreateImage uses display coordinates with Y=0 at the top.
-        guard let screenHeight = NSScreen.main?.frame.height else {
-            throw ScreenCaptureError.captureFailed
+        // Use the screen that contains the rect so captures on secondary monitors are flipped correctly.
+        let screenHeight: CGFloat
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(rect) }) {
+            screenHeight = screen.frame.height
+        } else {
+            guard let h = NSScreen.screens.first?.frame.height else {
+                throw ScreenCaptureError.captureFailed
+            }
+            screenHeight = h
         }
         let cgRect = CGRect(
             x: rect.origin.x,

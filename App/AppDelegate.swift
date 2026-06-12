@@ -49,6 +49,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         popup.state.onTranslate = { [weak self] text in
             self?.translateScreenOCR(text)
         }
+        popup.onClose = { [weak self] in
+            self?.lastCapturedText = nil
+            self?.lastCapturedImage = nil
+        }
+    }
+
+    private enum Timing {
+        /// Delay to restore focus before screen capture
+        static let focusRestoreDelay: UInt64 = 150_000_000  // 150ms
+        /// Delay after closing popup before paste (covers close animation)
+        static let pasteDelay: UInt64 = 200_000_000         // 200ms
     }
 
     private var lastCapturedText: String?
@@ -57,6 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastTargetLanguage: String?
     private var lastOperation: AIOperation = .translate
     private var lastCapturedImage: NSImage?
+    private var currentScreenTranslateTask: Task<Void, Never>?
+    private var currentOperationTask: Task<Void, Never>?
+    private var previousApp: NSRunningApplication?
 
     private func observeSettings() {
         settingsStore.$hotkeys
@@ -91,23 +105,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsStore.$iCloudSync
             .removeDuplicates()
             .sink { [weak self] enabled in
-                self?.historyStore.iCloudEnabled = enabled
+                guard let self else { return }
+                self.historyStore.iCloudEnabled = enabled
+                self.usageStore.iCloudEnabled = enabled
                 if enabled {
-                    self?.settingsStore.reloadFromCloudIfNewer()
-                    self?.historyStore.reloadFromCloudIfNewer()
+                    self.settingsStore.reloadFromCloudIfNewer()
+                    self.historyStore.reloadFromCloudIfNewer()
+                    self.usageStore.reloadFromCloudIfNewer()
                 }
             }
             .store(in: &cancellables)
 
-        settingsStore.$iCloudSync
+        settingsStore.$syncHistoryToiCloud
             .removeDuplicates()
-            .sink { [weak self] enabled in
-                self?.usageStore.iCloudEnabled = enabled
-                if enabled {
-                    self?.usageStore.reloadFromCloudIfNewer()
-                }
+            .sink { [weak self] sync in
+                self?.historyStore.syncHistoryToiCloud = sync
+                if sync { self?.historyStore.reloadFromCloudIfNewer() }
             }
             .store(in: &cancellables)
+
     }
 
     private func installMainMenu() {
@@ -150,6 +166,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for: legacy.providerType
         )
         log.info("Migrated legacy dev config into SettingsStore")
+        let devConfigPath = NSHomeDirectory() + "/.lingopop-dev.json"
+        do {
+            try FileManager.default.removeItem(atPath: devConfigPath)
+            log.info("Removed dev config after migration")
+        } catch {
+            log.warning("Could not remove dev config: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func setupStatusItem() {
@@ -273,15 +296,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         guard PermissionsManager.isAccessibilityGranted() else {
-            DispatchQueue.main.async {
-                self.showAccessibilityHelpAlert()
-            }
+            showAccessibilityHelpAlert()
             return
         }
-        Task { @MainActor in
+        previousApp = NSWorkspace.shared.frontmostApplication
+        currentOperationTask?.cancel()
+        currentOperationTask = Task { @MainActor in
+            defer { currentOperationTask = nil }
             do {
                 let captured = try await TextCapture.capture()
-                self.log.info("Captured: \(captured.text, privacy: .public)")
+                self.log.info("Captured: \(captured.text, privacy: .private)")
                 let limit = self.settingsStore.maxInputChars
                 if limit > 0, captured.text.count > limit {
                     self.statusController.apply(.error)
@@ -329,15 +353,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return
             }
         }
-        let previousApp = NSWorkspace.shared.frontmostApplication
-        Task { @MainActor in
+        currentScreenTranslateTask?.cancel()
+        previousApp = NSWorkspace.shared.frontmostApplication
+        currentScreenTranslateTask = Task { @MainActor in
+            defer { currentScreenTranslateTask = nil }
             lastCapturedText = nil
             do {
                 let screenRect = try await CaptureOverlayWindow.runSelection()
                 // Restore previous app and give the OS 150 ms to transfer focus so
                 // any subsequent Cmd+C (regular translate) goes to the right app.
                 previousApp?.activate(options: .activateIgnoringOtherApps)
-                try? await Task.sleep(nanoseconds: 150_000_000)
+                try await Task.sleep(nanoseconds: Timing.focusRestoreDelay)
 
                 let cgImage = try ScreenCapture.capture(rect: screenRect)
                 let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
@@ -372,8 +398,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 lastTargetLanguage = targetLanguage
 
                 // Auto-copy the OCR text so it's immediately available
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(ocrText, forType: .string)
+                if settingsStore.autoCopyOCR {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(ocrText, forType: .string)
+                }
 
                 statusController.apply(.idle)
                 popup.state.setOCR(ocrText)
@@ -385,6 +413,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 statusController.apply(.error)
                 popup.state.setError("Selection is too small. Try selecting a larger area.")
                 popup.show(near: NSEvent.mouseLocation)
+            } catch is CancellationError {
+                return
             } catch {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
                 statusController.apply(.error)
@@ -455,7 +485,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func present(result: TranslationResult, source: String?, viaFallback: Bool) {
-        if result.operation == .screenTranslate {
+        if result.operation == .screenTranslate, settingsStore.autoCopyOCR {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(result.translated, forType: .string)
         }
@@ -506,7 +536,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return status == 429 || (500...599).contains(status)
         case .network:
             return true
-        case .invalidURL, .missingApiKey, .decoding, .emptyResponse, .operationNotSupported:
+        case .invalidURL, .missingApiKey, .decoding, .emptyResponse, .operationNotSupported,
+             .invalidConfiguration, .providerNotFound:
             return false
         }
     }
@@ -641,7 +672,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pasteboard.setString(text, forType: .string)
         popup.close()
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try await Task.sleep(nanoseconds: Timing.pasteDelay)
+            previousApp?.activate(options: .activateIgnoringOtherApps)
             simulateCommandV()
         }
     }

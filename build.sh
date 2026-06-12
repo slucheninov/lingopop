@@ -5,7 +5,8 @@
 
 set -euo pipefail
 
-BUILD_DIR="/tmp/lingo-pop-build"
+BUILD_DIR=$(mktemp -d)
+trap 'rm -rf "$BUILD_DIR"' EXIT
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 cd "$PROJECT_DIR"
@@ -34,7 +35,13 @@ else
     echo "Warning: 'LingoPop Dev' cert missing — falling back to ad-hoc. Run ./scripts/setup-cert.sh to fix Accessibility persistence."
     SIGN_IDENTITY="-"
 fi
-codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements "$PROJECT_DIR/App/LingoPop.entitlements" "$DEST_APP" 2>&1 | tail -3
+FRAMEWORKS_DIR="$DEST_APP/Contents/Frameworks"
+if [ -d "$FRAMEWORKS_DIR" ]; then
+    find "$FRAMEWORKS_DIR" -name "*.framework" -o -name "*.dylib" | while read component; do
+        codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$component"
+    done
+fi
+codesign --force --sign "$SIGN_IDENTITY" --entitlements "$PROJECT_DIR/App/LingoPop.entitlements" "$DEST_APP" 2>&1 | tail -3
 
 case "${1:-}" in
     run)
