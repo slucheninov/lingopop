@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.lastCapturedText = nil
             self?.lastCapturedImage = nil
         }
+        UpdateChecker.shared.startPeriodicChecks()
     }
 
     private enum Timing {
