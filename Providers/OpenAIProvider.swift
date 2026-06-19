@@ -137,7 +137,7 @@ struct OpenAIProvider: AIProvider {
         let body = RequestBody(
             model: config.model,
             messages: [
-                .init(role: "system", content: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage)),
+                .init(role: "system", content: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage, magicPrompt: config.magicPrompt)),
                 .init(role: "user", content: PromptBuilder.userContent(text))
             ],
             temperature: 0.3

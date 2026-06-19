@@ -144,7 +144,7 @@ struct GeminiProvider: AIProvider {
         }
 
         let body = RequestBody(
-            systemInstruction: .init(parts: [.init(text: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage))]),
+            systemInstruction: .init(parts: [.init(text: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage, magicPrompt: config.magicPrompt))]),
             contents: [.init(role: "user", parts: [.init(text: PromptBuilder.userContent(text))])]
         )
 

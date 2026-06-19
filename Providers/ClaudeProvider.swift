@@ -143,7 +143,7 @@ struct ClaudeProvider: AIProvider {
         let body = RequestBody(
             model: config.model,
             max_tokens: 4096,
-            system: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage),
+            system: PromptBuilder.systemPrompt(for: operation, targetLanguage: config.targetLanguage, magicPrompt: config.magicPrompt),
             messages: [.init(role: "user", content: PromptBuilder.userContent(text))]
         )
 
