@@ -615,16 +615,10 @@ private struct AboutTab: View {
 private struct MagicSettingsTab: View {
     @ObservedObject var store: SettingsStore
     @State private var showResetAlert = false
+    @State private var draftPrompt: String = ""
 
     private var charCount: Int {
-        store.magicPrompt.unicodeScalars.count
-    }
-
-    private var clampedPrompt: Binding<String> {
-        Binding(
-            get: { self.store.magicPrompt },
-            set: { self.store.magicPrompt = SettingsStore.sanitizeMagicPrompt($0) }
-        )
+        draftPrompt.unicodeScalars.count
     }
 
     var body: some View {
@@ -635,9 +629,14 @@ private struct MagicSettingsTab: View {
                         .foregroundStyle(.secondary)
                         .font(.callout)
 
-                    TextEditor(text: clampedPrompt)
+                    TextEditor(text: $draftPrompt)
                         .font(.body.monospaced())
                         .frame(minHeight: 120)
+                        .onChange(of: draftPrompt) { newVal in
+                            if newVal.unicodeScalars.count > 2000 {
+                                draftPrompt = String(newVal.unicodeScalars.prefix(2000))
+                            }
+                        }
 
                     HStack {
                         Text("\(charCount) / 2000")
@@ -649,6 +648,12 @@ private struct MagicSettingsTab: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.blue)
+                        Button("Save") {
+                            store.magicPrompt = SettingsStore.sanitizeMagicPrompt(draftPrompt)
+                            draftPrompt = store.magicPrompt
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(draftPrompt == store.magicPrompt)
                     }
                 }
             } header: {
@@ -656,9 +661,11 @@ private struct MagicSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { draftPrompt = store.magicPrompt }
         .alert("Reset prompt?", isPresented: $showResetAlert) {
             Button("Reset", role: .destructive) {
                 store.magicPrompt = PromptBuilder.defaultMagicPrompt
+                draftPrompt = PromptBuilder.defaultMagicPrompt
             }
             Button("Cancel", role: .cancel) {}
         } message: {
