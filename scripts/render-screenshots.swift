@@ -660,6 +660,9 @@ struct FixtureMagicTab: View {
                         Button("Reset to default") {}
                             .buttonStyle(.plain)
                             .foregroundStyle(.blue)
+                        Button("Save") {}
+                            .buttonStyle(.borderedProminent)
+                            .disabled(true)
                     }
                 }
             } header: {
