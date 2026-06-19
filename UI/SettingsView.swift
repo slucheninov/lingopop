@@ -16,6 +16,8 @@ struct SettingsView: View {
                 .tabItem { Label("Shortcuts", systemImage: "command") }
             UsageSettingsTab(store: usageStore)
                 .tabItem { Label("Usage", systemImage: "chart.bar.xaxis") }
+            MagicSettingsTab(store: store)
+                .tabItem { Label("Magic", systemImage: "sparkles") }
             AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
@@ -605,5 +607,55 @@ private struct AboutTab: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+// MARK: - Magic Tab
+
+private struct MagicSettingsTab: View {
+    @ObservedObject var store: SettingsStore
+    @State private var showResetAlert = false
+
+    private var charCount: Int {
+        store.magicPrompt.unicodeScalars.count
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Magic runs a single AI call with your custom system prompt. Use {{targetLanguage}} to insert your configured target language automatically.")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+
+                    TextEditor(text: $store.magicPrompt)
+                        .font(.body.monospaced())
+                        .frame(minHeight: 120)
+
+                    HStack {
+                        Text("\(charCount) / 2000")
+                            .font(.caption)
+                            .foregroundStyle(charCount >= 1900 ? Color.red : Color.secondary)
+                        Spacer()
+                        Button("Reset to default") {
+                            showResetAlert = true
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                    }
+                }
+            } header: {
+                Text("System prompt")
+            }
+        }
+        .formStyle(.grouped)
+        .alert("Reset prompt?", isPresented: $showResetAlert) {
+            Button("Reset", role: .destructive) {
+                store.magicPrompt = PromptBuilder.defaultMagicPrompt
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will replace your prompt with the default. Continue?")
+        }
     }
 }
