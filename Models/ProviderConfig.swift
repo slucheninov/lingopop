@@ -16,6 +16,7 @@ struct ProviderConfig: Codable, Equatable {
     var baseURL: String
     var model: String
     var targetLanguage: String
+    var magicPrompt: String = ""
     var referer: String?
     var region: String?
 
