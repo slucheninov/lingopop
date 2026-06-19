@@ -6,6 +6,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 ## [Unreleased]
 
+### Magic operation
+
+- New **Magic** operation: one hotkey that fixes grammar, improves style, and translates in a single AI call — all at once. Requires Claude, OpenAI, or Gemini
+- Fully customisable system prompt in **Settings → Magic**. Use `{{targetLanguage}}` as a placeholder for your configured target language
+- Custom prompt is sanitised (2 000 character limit) and syncs via iCloud Drive alongside other settings
+- Default prompt combines grammar fix + style improvement + translation into one step
+
 ## v0.3.3 — 2026-06-12 Security hardening and code quality
 
 - Applied security hardening and code quality improvements from internal audit
