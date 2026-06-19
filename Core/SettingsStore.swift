@@ -27,6 +27,7 @@ final class SettingsStore: ObservableObject {
         var iCloudSync: Bool?
         var syncHistoryToiCloud: Bool?
         var autoCopyOCR: Bool?
+        var magicPrompt: String?
     }
 
     static let autoLanguageSentinel = "Auto"
@@ -48,6 +49,7 @@ final class SettingsStore: ObservableObject {
     @Published var iCloudSync: Bool
     @Published var syncHistoryToiCloud: Bool
     @Published var autoCopyOCR: Bool
+    @Published var magicPrompt: String
     @Published var apiKeySaveError: String? = nil
 
     private var saveSubscription: AnyCancellable?
@@ -55,6 +57,17 @@ final class SettingsStore: ObservableObject {
     private var lastCloudMTime: Date?
     private var suppressAutoSaveBefore: Date = .distantPast
     private let log = Logger(subsystem: "com.lingopop.app", category: "SettingsStore")
+
+    static func sanitizeMagicPrompt(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = trimmed.filter { ch in
+            ch == "\n" || ch == "\t" || ch.asciiValue.map { $0 >= 0x20 } ?? true
+        }
+        if cleaned.unicodeScalars.count > 2000 {
+            return String(cleaned.unicodeScalars.prefix(2000))
+        }
+        return cleaned
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -88,6 +101,7 @@ final class SettingsStore: ObservableObject {
         self.iCloudSync = loaded.persisted.iCloudSync ?? CloudStorage.isAvailable
         self.syncHistoryToiCloud = loaded.persisted.syncHistoryToiCloud ?? false
         self.autoCopyOCR = loaded.persisted.autoCopyOCR ?? true
+        self.magicPrompt = loaded.persisted.magicPrompt ?? PromptBuilder.defaultMagicPrompt
         self.lastCloudMTime = loaded.cloudMTime
         installAutoSave()
         installCloudPolling()
@@ -107,7 +121,8 @@ final class SettingsStore: ObservableObject {
             $languagePairs.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $iCloudSync.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $syncHistoryToiCloud.dropFirst().map { _ in () }.eraseToAnyPublisher(),
-            $autoCopyOCR.dropFirst().map { _ in () }.eraseToAnyPublisher()
+            $autoCopyOCR.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            $magicPrompt.dropFirst().map { _ in () }.eraseToAnyPublisher()
         ]
         saveSubscription = Publishers.MergeMany(publishers)
             .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
@@ -151,6 +166,8 @@ final class SettingsStore: ObservableObject {
         if let s = p.iCloudSync, iCloudSync != s { iCloudSync = s }
         if let s = p.syncHistoryToiCloud, syncHistoryToiCloud != s { syncHistoryToiCloud = s }
         if let a = p.autoCopyOCR, autoCopyOCR != a { autoCopyOCR = a }
+        let pm = p.magicPrompt ?? PromptBuilder.defaultMagicPrompt
+        if magicPrompt != pm { magicPrompt = pm }
     }
 
     func save() {
@@ -168,7 +185,8 @@ final class SettingsStore: ObservableObject {
             languagePairs: languagePairs,
             iCloudSync: iCloudSync,
             syncHistoryToiCloud: syncHistoryToiCloud,
-            autoCopyOCR: autoCopyOCR
+            autoCopyOCR: autoCopyOCR,
+            magicPrompt: SettingsStore.sanitizeMagicPrompt(magicPrompt)
         )
         let encoder = JSONEncoder()
         guard let data = try? encoder.encode(persisted) else { return }
@@ -251,6 +269,7 @@ final class SettingsStore: ObservableObject {
             baseURL: s.baseURL,
             model: s.model,
             targetLanguage: overrideTargetLanguage ?? targetLanguage,
+            magicPrompt: SettingsStore.sanitizeMagicPrompt(magicPrompt),
             referer: s.referer,
             region: s.region
         )
