@@ -293,6 +293,7 @@ func buildMenuPanel() -> NSView {
         OperationMenuRowView(title: "Rewrite", symbol: "wand.and.stars", shortcut: "", width: width),
         OperationMenuRowView(title: "Explain", symbol: "text.magnifyingglass", shortcut: "", width: width),
         OperationMenuRowView(title: "Screen Translate", symbol: "camera.viewfinder", shortcut: "", width: width),
+        OperationMenuRowView(title: "Magic", symbol: "sparkles", shortcut: "", width: width),
         MenuSeparatorView(width: width),
         SubmenuRowView(title: "Target: \(AppFixture.targetLanguage)", width: width),
         CommandRowView(title: "History…", shortcut: "⌘H", width: width),
@@ -421,7 +422,8 @@ struct FixtureSettingsShell<Content: View>: View {
             Color.clear.tag(1).tabItem { Label("Providers", systemImage: "cpu") }
             Color.clear.tag(2).tabItem { Label("Shortcuts", systemImage: "command") }
             Color.clear.tag(3).tabItem { Label("Usage", systemImage: "chart.bar.xaxis") }
-            Color.clear.tag(4).tabItem { Label("About", systemImage: "info.circle") }
+            Color.clear.tag(4).tabItem { Label("Magic", systemImage: "sparkles") }
+            Color.clear.tag(5).tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 720, height: 560)
     }
@@ -534,7 +536,7 @@ struct FixtureProvidersTab: View {
                         Image(systemName: "cpu").font(.system(size: 24)).foregroundStyle(.tint)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Claude").font(.system(size: 16, weight: .semibold))
-                            Text("Translate · Fix grammar · Rewrite · Explain · Screen Translate")
+                            Text("Translate · Fix grammar · Rewrite · Explain · Screen Translate · Magic")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -578,7 +580,8 @@ struct FixtureShortcutsTab: View {
         ("checkmark.seal", "Fix grammar", nil),
         ("wand.and.stars", "Rewrite", nil),
         ("text.magnifyingglass", "Explain", nil),
-        ("camera.viewfinder", "Screen Translate", nil)
+        ("camera.viewfinder", "Screen Translate", nil),
+        ("sparkles", "Magic", nil)
     ]
 
     var body: some View {
@@ -814,6 +817,7 @@ struct SettingsTabHost: View {
 // MARK: - Render all
 
 func renderAll(outDir: String) throws {
+    NSApp.appearance = NSAppearance(named: .aqua)
     let fm = FileManager.default
     try fm.createDirectory(atPath: outDir, withIntermediateDirectories: true)
 
