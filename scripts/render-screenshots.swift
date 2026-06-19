@@ -13,7 +13,7 @@ enum AppFixture {
     static let claudeBaseURL = "https://api.anthropic.com"
     static let translated = "Дякую за швидку відповідь, передам команді."
     static let ocrText = "Bonjour, comment allez-vous aujourd'hui?"
-    static let settingsTabs = ["Main", "Providers", "Shortcuts", "Usage", "About"]
+    static let settingsTabs = ["Main", "Providers", "Shortcuts", "Usage", "Magic", "About"]
 }
 
 // MARK: - Snapshot helpers
@@ -635,6 +635,38 @@ struct FixtureAboutTab: View {
     }
 }
 
+
+struct FixtureMagicTab: View {
+    private let prompt = "You are a professional writing assistant. Fix all grammar, spelling, and punctuation errors, improve clarity, flow, and style, and if the text is not in {{targetLanguage}}, translate it into {{targetLanguage}}. Return only the result - no explanations, no notes."
+    private var charCount: Int { prompt.unicodeScalars.count }
+    var body: some View {
+        Form {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Magic runs a single AI call with your custom system prompt. Use {{targetLanguage}} to insert your configured target language automatically.")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                    TextEditor(text: .constant(prompt))
+                        .font(.body.monospaced())
+                        .frame(minHeight: 120)
+                    HStack {
+                        Text("\(charCount) / 2000")
+                            .font(.caption)
+                            .foregroundStyle(Color.secondary)
+                        Spacer()
+                        Button("Reset to default") {}
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.blue)
+                    }
+                }
+            } header: {
+                Text("System prompt")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
 struct FixtureHistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
@@ -732,6 +764,7 @@ struct SettingsTabBar: View {
         ("Providers", "cpu"),
         ("Shortcuts", "command"),
         ("Usage", "chart.bar.xaxis"),
+        ("Magic", "sparkles"),
         ("About", "info.circle")
     ]
 
@@ -766,7 +799,8 @@ struct SettingsTabHost: View {
                 case 0: FixtureMainTab()
                 case 1: FixtureProvidersTab()
                 case 2: FixtureShortcutsTab()
-                case 4: FixtureAboutTab()
+                case 4: FixtureMagicTab()
+                case 5: FixtureAboutTab()
                 default: Color.clear
                 }
             }
@@ -805,7 +839,7 @@ func renderAll(outDir: String) throws {
     print("Wrote \(outDir)/popup-screen.png")
 
     // Settings + History — window chrome on gradient desktop (same canvas as menu/popup)
-    for (tab, name) in [(0, "settings-main"), (1, "settings-providers"), (2, "settings-shortcuts"), (4, "settings-about")] {
+    for (tab, name) in [(0, "settings-main"), (1, "settings-providers"), (2, "settings-shortcuts"), (4, "settings-magic"), (5, "settings-about")] {
         let img = snapshotChromeWindow(title: "LingoPop Settings", width: 720, contentHeight: 560) {
             SettingsTabHost(tab: tab)
         }

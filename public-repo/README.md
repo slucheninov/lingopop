@@ -41,6 +41,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/settings-magic.png" alt="Settings – Magic tab" width="800"/>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/history.png" alt="Translation history" width="600"/>
 </p>
 
