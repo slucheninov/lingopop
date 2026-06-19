@@ -41,6 +41,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/screenshots/settings-magic.png" alt="Settings – Magic tab" width="800"/>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/history.png" alt="Translation history" width="600"/>
 </p>
 
@@ -50,6 +54,7 @@
 - ✓ **Fix grammar** — spelling, punctuation, and grammar only; meaning and style stay the same
 - ✨ **Rewrite** — clearer wording in the same language; meaning and tone preserved
 - 🖼️ **Screen Translate** — press the hotkey, drag a selection over any screen region, and get the recognized text instantly. Press **Translate** in the popup to run AI translation, or just grab the OCR text as-is. Works across multiple monitors
+- ✨ **Magic** — one hotkey that fixes grammar, improves style, and translates in a single AI call. Write your own system prompt in **Settings → Magic**; use `{{targetLanguage}}` as a placeholder. Requires Claude, OpenAI, or Gemini
 - ⌨️ Each operation has its own configurable global hotkey. **Translate** ships with **⌥T**; others are unset until you assign them
 - 📋 Popup actions: **Copy**, **Replace** (pastes back into the source app), **Retry with another provider**
 - 🤖 Seven providers: **Claude**, **OpenAI**, **Gemini** (all three operations + vision), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
@@ -112,13 +117,13 @@ Per provider:
 - **Region** — optional, only for **Microsoft Translator** (required for multi-service or regional Azure resources; leave empty for global free-tier F0 resources)
 - **Fallback** — pick another provider to try once on rate-limit, server, or network errors
 
-Configure keys for several providers and switch the active one anytime. **Fix grammar** and **Rewrite** require Claude, OpenAI, or Gemini — the four translation-only providers are DeepL, Microsoft Translator, Google Translate, and Google (Free).
+Configure keys for several providers and switch the active one anytime. **Fix grammar**, **Rewrite**, and **Magic** require Claude, OpenAI, or Gemini — the four translation-only providers are DeepL, Microsoft Translator, Google Translate, and Google (Free).
 
 Click **Save** on the detail pane after editing a provider.
 
 ### Shortcuts
 
-Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrite**, **Screen Translate**. Click the field, press a combination with **⌃ ⌥ ⇧ ⌘** plus a key; **Esc** cancels, **✕** clears.
+Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrite**, **Screen Translate**, **Magic**. Click the field, press a combination with **⌃ ⌥ ⇧ ⌘** plus a key; **Esc** cancels, **✕** clears.
 
 ### About
 
@@ -138,9 +143,9 @@ Besides **Settings…** and **History…**:
 
 | Provider in Settings | Operations | Key |
 |---|---|---|
-| Claude | Translate · Fix grammar · Rewrite | [console.anthropic.com](https://console.anthropic.com/) |
-| OpenAI | Translate · Fix grammar · Rewrite | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Gemini | Translate · Fix grammar · Rewrite | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| Claude | Translate · Fix grammar · Rewrite · Magic | [console.anthropic.com](https://console.anthropic.com/) |
+| OpenAI | Translate · Fix grammar · Rewrite · Magic | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Gemini | Translate · Fix grammar · Rewrite · Magic | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | DeepL | Translate only | [www.deepl.com/pro-api](https://www.deepl.com/pro-api) — free tier (500k chars/mo) available. Free keys end in `:fx`; change the base URL to `https://api.deepl.com` for paid keys |
 | Microsoft Translator | Translate only | [Azure Cognitive Services](https://portal.azure.com/) — free tier (F0) gives 2M chars/mo |
 | Google Translate | Translate only | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) — enable Cloud Translation API |
