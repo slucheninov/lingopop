@@ -23,11 +23,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/popup-screen.png" alt="Screen Translate — recognized text popup" width="600"/>
+  <img src="docs/screenshots/popup-screen.png" alt="Screen Translate — recognized text popup" width="800"/>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/menu.png" alt="Menu-bar dropdown" width="500"/>
+  <img src="docs/screenshots/menu.png" alt="Menu-bar dropdown" width="800"/>
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/history.png" alt="Translation history" width="600"/>
+  <img src="docs/screenshots/history.png" alt="Translation history" width="800"/>
 </p>
 
 ## Features
@@ -124,6 +124,10 @@ Click **Save** on the detail pane after editing a provider.
 ### Shortcuts
 
 Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrite**, **Screen Translate**, **Magic**. Click the field, press a combination with **⌃ ⌥ ⇧ ⌘** plus a key; **Esc** cancels, **✕** clears.
+
+### Magic
+
+Write a custom system prompt for the Magic operation. Use `{{targetLanguage}}` as a placeholder — it's replaced at runtime with your configured target language. Click **Save** to apply changes. **Reset to default** restores the built-in prompt. Requires Claude, OpenAI, or Gemini.
 
 ### About
 
