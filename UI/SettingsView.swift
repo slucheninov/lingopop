@@ -620,6 +620,13 @@ private struct MagicSettingsTab: View {
         store.magicPrompt.unicodeScalars.count
     }
 
+    private var clampedPrompt: Binding<String> {
+        Binding(
+            get: { self.store.magicPrompt },
+            set: { self.store.magicPrompt = SettingsStore.sanitizeMagicPrompt($0) }
+        )
+    }
+
     var body: some View {
         Form {
             Section {
@@ -628,7 +635,7 @@ private struct MagicSettingsTab: View {
                         .foregroundStyle(.secondary)
                         .font(.callout)
 
-                    TextEditor(text: $store.magicPrompt)
+                    TextEditor(text: clampedPrompt)
                         .font(.body.monospaced())
                         .frame(minHeight: 120)
 
