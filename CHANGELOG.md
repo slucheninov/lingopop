@@ -4,7 +4,7 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## v0.3.5 — 2026-06-19 Magic operation and update checker
 
 ### Magic operation
 
@@ -12,6 +12,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 - Fully customisable system prompt in **Settings → Magic**. Use `{{targetLanguage}}` as a placeholder for your configured target language
 - Custom prompt is sanitised (2 000 character limit) and syncs via iCloud Drive alongside other settings
 - Default prompt combines grammar fix + style improvement + translation into one step
+
+### Update checker
+
+- LingoPop now checks for new versions every 3 hours in the background
+- **Settings → About** shows a banner when a new version is available, with a direct Download link to the release page
+- "Check for updates" button in About tab for on-demand checks
 
 ## v0.3.3 — 2026-06-12 Security hardening and code quality
 
