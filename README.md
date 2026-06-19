@@ -31,9 +31,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/settings-main.png" alt="Settings – Main tab" width="600"/>
+  <img src="docs/screenshots/settings-main.png" alt="Settings – Main tab" width="800"/>
   &nbsp;
-  <img src="docs/screenshots/settings-providers.png" alt="Settings – Providers tab" width="600"/>
+  <img src="docs/screenshots/settings-providers.png" alt="Settings – Providers tab" width="800"/>
 </p>
 
 <p align="center">
