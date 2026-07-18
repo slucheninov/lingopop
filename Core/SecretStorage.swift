@@ -90,7 +90,7 @@ enum SecretStorage {
     }
 
     static func get(_ key: String) -> String? {
-        let store = loadAll()
+        guard case .available(let store) = loadAll() else { return nil }
         return store[key]
     }
 
@@ -100,7 +100,10 @@ enum SecretStorage {
 
     @discardableResult
     static func set(_ value: String, for key: String) -> Bool {
-        var store = loadAll()
+        guard case .available(var store) = loadAll() else {
+            log.error("Secrets store unavailable; refusing to overwrite secrets.dat")
+            return false
+        }
         store[key] = value
         let ok = saveAll(store)
         if ok {
@@ -111,7 +114,10 @@ enum SecretStorage {
 
     @discardableResult
     static func delete(_ key: String) -> Bool {
-        var store = loadAll()
+        guard case .available(var store) = loadAll() else {
+            log.error("Secrets store unavailable; refusing to overwrite secrets.dat")
+            return false
+        }
         store.removeValue(forKey: key)
         let ok = saveAll(store)
         if ok {
@@ -120,15 +126,30 @@ enum SecretStorage {
         return ok
     }
 
-    private static func loadAll() -> [String: String] {
-        guard let data = try? Data(contentsOf: fileURL) else { return [:] }
+    private enum LoadResult {
+        case available([String: String])
+        case unavailable
+    }
+
+    private static func loadAll() -> LoadResult {
+        let url = fileURL
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .available([:])
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            log.error("Failed to read secrets.dat: \(error.localizedDescription, privacy: .public)")
+            return .unavailable
+        }
         do {
             let box = try AES.GCM.SealedBox(combined: data)
             let plaintext = try AES.GCM.open(box, using: symmetricKey)
-            return (try JSONDecoder().decode([String: String].self, from: plaintext))
+            return .available(try JSONDecoder().decode([String: String].self, from: plaintext))
         } catch {
-            log.error("Decrypt failed: \(error.localizedDescription, privacy: .public)")
-            return [:]
+            log.error("Failed to decrypt or decode secrets.dat: \(error.localizedDescription, privacy: .public)")
+            return .unavailable
         }
     }
 

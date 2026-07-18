@@ -15,23 +15,22 @@ enum ScreenCapture {
             throw ScreenCaptureError.tooSmall
         }
 
-        // AppKit coordinates have Y=0 at the bottom of the primary screen.
-        // CGWindowListCreateImage uses display coordinates with Y=0 at the top.
-        // Use the screen that contains the rect so captures on secondary monitors are flipped correctly.
-        let screenHeight: CGFloat
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(rect) }) {
-            screenHeight = screen.frame.height
-        } else {
-            guard let h = NSScreen.screens.first?.frame.height else {
-                throw ScreenCaptureError.captureFailed
-            }
-            screenHeight = h
+        guard let screen = screen(for: rect) else {
+            throw ScreenCaptureError.captureFailed
         }
+        let captureRect = rect.intersection(screen.frame)
+        guard captureRect.width >= 10, captureRect.height >= 10 else {
+            throw ScreenCaptureError.tooSmall
+        }
+
+        // AppKit screen frames are Y-up; CoreGraphics display bounds are Y-down.
+        // Convert through the selected screen's local coordinates for multi-monitor layouts.
+        let displayBounds = displayBounds(for: screen)
         let cgRect = CGRect(
-            x: rect.origin.x,
-            y: screenHeight - rect.maxY,
-            width: rect.width,
-            height: rect.height
+            x: displayBounds.origin.x + (captureRect.minX - screen.frame.minX),
+            y: displayBounds.origin.y + (screen.frame.maxY - captureRect.maxY),
+            width: captureRect.width,
+            height: captureRect.height
         )
 
         guard let image = CGWindowListCreateImage(
@@ -43,5 +42,30 @@ enum ScreenCapture {
             throw ScreenCaptureError.captureFailed
         }
         return image
+    }
+
+    private static func screen(for rect: CGRect) -> NSScreen? {
+        if let containing = NSScreen.screens.first(where: { $0.frame.contains(rect) }) {
+            return containing
+        }
+        var bestScreen: NSScreen?
+        var bestArea: CGFloat = 0
+        for screen in NSScreen.screens {
+            let intersection = screen.frame.intersection(rect)
+            guard !intersection.isNull, intersection.width > 0, intersection.height > 0 else { continue }
+            let area = intersection.width * intersection.height
+            if area > bestArea {
+                bestArea = area
+                bestScreen = screen
+            }
+        }
+        return bestScreen
+    }
+
+    private static func displayBounds(for screen: NSScreen) -> CGRect {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return screen.frame
+        }
+        return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
     }
 }

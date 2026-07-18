@@ -2,13 +2,18 @@ import Foundation
 
 func redactedURL(_ urlString: String) -> String {
     guard var components = URLComponents(string: urlString) else { return "<redacted-url>" }
-    let sensitiveKeys = ["key", "api_key", "apiKey", "apikey"]
+    let sensitiveKeys = Set(["key", "api_key", "apikey"])
     components.queryItems = components.queryItems?.map { item in
         sensitiveKeys.contains(item.name.lowercased())
             ? URLQueryItem(name: item.name, value: "REDACTED")
             : item
     }
     return components.string ?? "<redacted-url>"
+}
+
+func sanitizedHTTPBodyDetail(_ body: String) -> String? {
+    guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    return "Response body omitted for privacy (\(body.count) characters)."
 }
 
 struct TranslationResult {
@@ -57,9 +62,8 @@ enum TranslationError: LocalizedError {
     var technicalDetails: String? {
         switch self {
         case .http(let status, let body, let url):
-            let trimmedBody = String(body.prefix(280)).trimmingCharacters(in: .whitespacesAndNewlines)
             var parts = ["HTTP \(status) from \(url)"]
-            if !trimmedBody.isEmpty { parts.append(trimmedBody) }
+            if let detail = sanitizedHTTPBodyDetail(body) { parts.append(detail) }
             return parts.joined(separator: "\n")
         case .decoding(let detail):
             return detail

@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let historyStore = TranslationHistoryStore()
     private let usageStore = UsageStore()
     private let statusController = StatusItemController()
+    private lazy var operationRunner = OperationRunner(
+        settingsStore: settingsStore,
+        translationService: translationService
+    )
     private lazy var settingsWindow = SettingsWindowController(
         store: settingsStore,
         usageStore: usageStore,
@@ -61,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let focusRestoreDelay: UInt64 = 150_000_000  // 150ms
         /// Delay after closing popup before paste (covers close animation)
         static let pasteDelay: UInt64 = 200_000_000         // 200ms
+        /// Best-effort delay after paste before restoring the user's clipboard
+        static let clipboardRestoreDelay: UInt64 = 150_000_000 // 150ms
     }
 
     private var lastCapturedText: String?
@@ -434,49 +440,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         primary: ProviderType,
         allowFallback: Bool
     ) async {
-        let primaryConfig = settingsStore.config(for: primary, overrideTargetLanguage: targetLanguage)
-        let primaryImpl = translationService.providers[primary]
-        if primaryImpl?.supportedOperations.contains(operation) == false {
-            statusController.apply(.error)
-            popup.state.setError(.operationNotSupported(provider: primary, operation: operation))
-            popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
-            popup.show(near: cursorPosition)
-            return
-        }
-        let primaryRequiresKey = primaryImpl?.requiresApiKey ?? true
-        if primaryRequiresKey, primaryConfig.apiKey.isEmpty {
-            statusController.apply(.error)
-            popup.state.setError("API key missing for \(primary.rawValue). Open Settings → Provider to add one.")
-            popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
-            popup.show(near: cursorPosition)
-            return
-        }
         statusController.apply(.translating)
         popup.state.setLoading(operation: operation, original: text)
         popup.show(near: cursorPosition)
 
         do {
-            let result = try await translationService.execute(text: text, operation: operation, config: primaryConfig)
-            present(result: result, source: detectedSource, viaFallback: false)
-            return
+            let outcome = try await operationRunner.run(
+                operation: operation,
+                text: text,
+                detectedSource: detectedSource,
+                targetLanguage: targetLanguage,
+                primary: primary,
+                allowFallback: allowFallback
+            )
+            present(result: outcome.result, source: outcome.detectedSource, viaFallback: outcome.viaFallback)
         } catch let primaryError as TranslationError {
-            if allowFallback,
-               let fallback = settingsStore.fallback(for: primary),
-               fallback != primary,
-               isProviderReady(fallback, for: operation),
-               shouldRetryWithFallback(primaryError) {
-                let fallbackConfig = settingsStore.config(for: fallback, overrideTargetLanguage: targetLanguage)
-                do {
-                    var result = try await translationService.execute(text: text, operation: operation, config: fallbackConfig)
-                    result.viaFallback = true
-                    present(result: result, source: detectedSource, viaFallback: true)
-                    return
-                } catch {
-                    log.error("Fallback also failed: \(error.localizedDescription, privacy: .public)")
-                }
-            }
             statusController.apply(.error)
-            popup.state.setError(primaryError)
+            if case .missingApiKey = primaryError {
+                popup.state.setError("API key missing for \(primary.rawValue). Open Settings → Provider to add one.")
+            } else {
+                popup.state.setError(primaryError)
+            }
             popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
         } catch {
             statusController.apply(.error)
@@ -529,18 +513,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard impl.supportedOperations.contains(operation) else { return false }
         if !impl.requiresApiKey { return true }
         return settingsStore.hasApiKey(for: provider)
-    }
-
-    private func shouldRetryWithFallback(_ error: TranslationError) -> Bool {
-        switch error {
-        case .http(let status, _, _):
-            return status == 429 || (500...599).contains(status)
-        case .network:
-            return true
-        case .invalidURL, .missingApiKey, .decoding, .emptyResponse, .operationNotSupported,
-             .invalidConfiguration, .providerNotFound:
-            return false
-        }
     }
 
     private func retryWith(_ provider: ProviderType) {
@@ -669,6 +641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func replaceSelectedText(with text: String) {
         let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         popup.close()
@@ -676,6 +649,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try await Task.sleep(nanoseconds: Timing.pasteDelay)
             previousApp?.activate(options: .activateIgnoringOtherApps)
             simulateCommandV()
+            try await Task.sleep(nanoseconds: Timing.clipboardRestoreDelay)
+            snapshot.restore(to: pasteboard)
+        }
+    }
+
+    private struct PasteboardSnapshot {
+        let items: [NSPasteboardItem]
+
+        static func capture(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
+            let copiedItems: [NSPasteboardItem] = pasteboard.pasteboardItems?.map { item in
+                let copy = NSPasteboardItem()
+                for type in item.types {
+                    if let data = item.data(forType: type) {
+                        copy.setData(data, forType: type)
+                    }
+                }
+                return copy
+            } ?? []
+            return PasteboardSnapshot(items: copiedItems)
+        }
+
+        func restore(to pasteboard: NSPasteboard) {
+            pasteboard.clearContents()
+            if !items.isEmpty {
+                _ = pasteboard.writeObjects(items)
+            }
         }
     }
 

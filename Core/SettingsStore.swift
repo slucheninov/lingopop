@@ -318,7 +318,10 @@ final class SettingsStore: ObservableObject {
             maxHistoryCount: nil,
             useAutoDetect: nil,
             languagePairs: nil,
-            iCloudSync: nil
+            iCloudSync: nil,
+            syncHistoryToiCloud: nil,
+            autoCopyOCR: nil,
+            magicPrompt: nil
         )
     }
 }
