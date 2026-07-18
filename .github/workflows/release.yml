@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -28,7 +28,9 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
       - name: Install xcodegen
-        run: brew install xcodegen
+        run: |
+          brew untap aws/tap || true
+          brew install xcodegen
 
       - name: Resolve version
         id: version
@@ -66,7 +68,7 @@ jobs:
           ls -lh dist/
 
       - name: Upload workflow artifacts (debug)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lingopop-${{ steps.version.outputs.version }}
           path: dist/*
