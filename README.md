@@ -99,7 +99,7 @@ After first launch, click the LingoPop icon in the menu bar → **Settings…** 
 ### Main
 
 - **Target language** — choose a fixed target, or turn on **Auto-detect input language** and edit **language pairs** (source → target). Unmatched sources use the default target
-- **Limits** — **Max input characters** (default 5000) and **History size** (0–100, default 10)
+- **Limits** — **Max input characters** (default 5000), **History size** (storage + History window, 0–100, default 10), and **Display** (status-menu rows, 0–100, default 10)
 - **Startup** — **Launch at login**
 - **iCloud Drive sync** — sync settings and history between Macs on the same Apple ID (enabled when iCloud Drive is available). API keys are never synced
 - **Accessibility** — required to read selected text via simulated Copy. Grant access in System Settings, then fully quit and relaunch LingoPop
