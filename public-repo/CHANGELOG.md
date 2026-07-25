@@ -4,6 +4,12 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.7 — 2026-07-25 Menu history Display setting
+
+- New **Display** setting in **Settings → Main → Limits** — controls how many entries appear in the status-bar menu, independent of **History size**
+- Previously the status menu was hard-capped at 10 recent entries regardless of History size; now it shows `min(Display, History size)` entries
+- `⌘1`–`⌘0` shortcuts remain limited to the first 10 visible rows
+
 ## v0.3.5 — 2026-06-19 Magic operation and update checker
 
 ### Magic operation

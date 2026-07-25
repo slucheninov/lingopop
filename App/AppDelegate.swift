@@ -106,6 +106,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .removeDuplicates()
             .sink { [weak self] newMax in
                 self?.historyStore.trim(to: newMax)
+                self?.statusController.statusItem?.menu.map { self?.rebuildMenu($0) }
+            }
+            .store(in: &cancellables)
+
+        settingsStore.$menuHistoryCount
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.statusController.statusItem?.menu.map { self?.rebuildMenu($0) }
             }
             .store(in: &cancellables)
 
@@ -204,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
 
         let rowWidth = statusMenuRowWidth()
-        let menuCount = min(settingsStore.maxHistoryCount, 10)
+        let menuCount = min(settingsStore.menuHistoryCount, settingsStore.maxHistoryCount)
         let recentEntries = Array(historyStore.entries.prefix(menuCount))
 
         let header = NSMenuItem()

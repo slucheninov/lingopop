@@ -53,6 +53,11 @@ struct MainSettingsTab: View {
                         Text("\(store.maxHistoryCount)")
                     }
                 }
+                LabeledContent("Display") {
+                    Stepper(value: $store.menuHistoryCount, in: 0...100) {
+                        Text("\(store.menuHistoryCount)")
+                    }
+                }
             }
 
             Section("Startup") {

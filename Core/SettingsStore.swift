@@ -22,6 +22,7 @@ final class SettingsStore: ObservableObject {
         var launchAtLogin: Bool?
         var maxInputChars: Int?
         var maxHistoryCount: Int?
+        var menuHistoryCount: Int?
         var useAutoDetect: Bool?
         var languagePairs: [String: String]?
         var iCloudSync: Bool?
@@ -44,6 +45,7 @@ final class SettingsStore: ObservableObject {
     @Published var launchAtLogin: Bool
     @Published var maxInputChars: Int
     @Published var maxHistoryCount: Int
+    @Published var menuHistoryCount: Int
     @Published var useAutoDetect: Bool
     @Published var languagePairs: [String: String]
     @Published var iCloudSync: Bool
@@ -92,6 +94,7 @@ final class SettingsStore: ObservableObject {
         self.launchAtLogin = loaded.persisted.launchAtLogin ?? false
         self.maxInputChars = loaded.persisted.maxInputChars ?? 5000
         self.maxHistoryCount = loaded.persisted.maxHistoryCount ?? 10
+        self.menuHistoryCount = loaded.persisted.menuHistoryCount ?? 10
         self.useAutoDetect = loaded.persisted.useAutoDetect ?? false
         self.languagePairs = loaded.persisted.languagePairs ?? [
             "Russian": "Ukrainian",
@@ -117,6 +120,7 @@ final class SettingsStore: ObservableObject {
             $launchAtLogin.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $maxInputChars.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $maxHistoryCount.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            $menuHistoryCount.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $useAutoDetect.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $languagePairs.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             $iCloudSync.dropFirst().map { _ in () }.eraseToAnyPublisher(),
@@ -161,6 +165,7 @@ final class SettingsStore: ObservableObject {
         if let l = p.launchAtLogin, launchAtLogin != l { launchAtLogin = l }
         if let m = p.maxInputChars, maxInputChars != m { maxInputChars = m }
         if let m = p.maxHistoryCount, maxHistoryCount != m { maxHistoryCount = m }
+        if let m = p.menuHistoryCount, menuHistoryCount != m { menuHistoryCount = m }
         if let a = p.useAutoDetect, useAutoDetect != a { useAutoDetect = a }
         if let pairs = p.languagePairs, languagePairs != pairs { languagePairs = pairs }
         if let s = p.iCloudSync, iCloudSync != s { iCloudSync = s }
@@ -181,6 +186,7 @@ final class SettingsStore: ObservableObject {
             launchAtLogin: launchAtLogin,
             maxInputChars: maxInputChars,
             maxHistoryCount: maxHistoryCount,
+            menuHistoryCount: menuHistoryCount,
             useAutoDetect: useAutoDetect,
             languagePairs: languagePairs,
             iCloudSync: iCloudSync,
@@ -316,6 +322,7 @@ final class SettingsStore: ObservableObject {
             launchAtLogin: nil,
             maxInputChars: nil,
             maxHistoryCount: nil,
+            menuHistoryCount: nil,
             useAutoDetect: nil,
             languagePairs: nil,
             iCloudSync: nil,
