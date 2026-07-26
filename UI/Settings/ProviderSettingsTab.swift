@@ -29,6 +29,10 @@ private struct ProviderSidebar: View {
             List(selection: $selected) {
                 ForEach(ProviderType.allCases, id: \.self) { type in
                     HStack(spacing: 8) {
+                        Image(systemName: type.sfSymbol)
+                            .font(.system(size: 14))
+                            .foregroundStyle(type.iconColor)
+                            .frame(width: 18)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
                                 Text(type.rawValue)
@@ -96,6 +100,7 @@ private struct ProviderDetailView: View {
     @State private var savedFlash: Bool = false
     @State private var savedFlashTask: Task<Void, Never>?
     @State private var hasKey: Bool = false
+    @State private var showEndpointHelp: Bool = false
 
     private var requiresKey: Bool { providerImpls[provider]?.requiresApiKey ?? true }
     private var supportedOps: Set<AIOperation> { providerImpls[provider]?.supportedOperations ?? [] }
@@ -104,9 +109,9 @@ private struct ProviderDetailView: View {
         Form {
             Section {
                 HStack(spacing: 10) {
-                    Image(systemName: "cpu")
+                    Image(systemName: provider.sfSymbol)
                         .font(.system(size: 24))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(provider.iconColor)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(provider.rawValue)
                             .font(.system(size: 16, weight: .semibold))
@@ -158,12 +163,30 @@ private struct ProviderDetailView: View {
             }
 
             Section("Endpoint") {
-                TextField("Base URL", text: $baseURL)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled(true)
-                if let placeholder = providerImpls[provider]?.defaultBaseURL {
-                    Text("Default: \(placeholder)")
-                        .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    TextField("Base URL", text: $baseURL)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled(true)
+                    Button {
+                        showEndpointHelp = true
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Show default endpoint")
+                    .popover(isPresented: $showEndpointHelp) {
+                        Text("Default: \(providerImpls[provider]?.defaultBaseURL ?? "")")
+                            .padding()
+                            .frame(maxWidth: 280)
+                    }
+                    Button {
+                        baseURL = providerImpls[provider]?.defaultBaseURL ?? baseURL
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Reset to default endpoint")
+                    .disabled(baseURL == (providerImpls[provider]?.defaultBaseURL ?? baseURL))
                 }
             }
 

@@ -72,17 +72,21 @@ struct PopupView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .popupButtonHelp("Copy")
                 Button(action: { state.onTranslate?(text) }) {
                     Label("Translate", systemImage: "globe")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .popupButtonHelp("Translate")
                 Spacer(minLength: 0)
                 if !state.availableRetryProviders.isEmpty {
                     Menu {
                         ForEach(state.availableRetryProviders, id: \.self) { provider in
-                            Button("Retry with \(provider.rawValue)") {
+                            Button {
                                 state.onRetry?(provider)
+                            } label: {
+                                Label("Retry with \(provider.rawValue)", systemImage: provider.sfSymbol)
                             }
                         }
                     } label: {
@@ -97,8 +101,9 @@ struct PopupView: View {
         case .result(let result):
             HStack(spacing: 6) {
                 HStack(spacing: 4) {
-                    Image(systemName: result.operation.systemImage)
+                    Image(systemName: result.provider.sfSymbol)
                         .font(.system(size: headerFontSize, weight: .semibold))
+                        .foregroundStyle(result.provider.iconColor)
                     if result.operation == .translate {
                         Text("\(result.provider.rawValue) →")
                             .font(.system(size: headerFontSize, weight: .semibold))
@@ -150,31 +155,37 @@ struct PopupView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .popupButtonHelp("Copy")
                 if result.operation != .screenTranslate {
                     Button(action: { state.onReplace?(result.translated) }) {
                         Label("Replace", systemImage: "arrow.uturn.left")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .popupButtonHelp("Replace")
                 }
                 Button(action: { state.onRewrite?(result.translated) }) {
                     Label("Rewrite", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .popupButtonHelp("Rewrite")
                 if result.operation != .explain {
                     Button(action: { state.onExplain?(result.translated) }) {
                         Label("Explain", systemImage: "text.magnifyingglass")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .popupButtonHelp("Explain")
                 }
                 Spacer(minLength: 0)
                 if !state.availableRetryProviders.isEmpty {
                     Menu {
                         ForEach(state.availableRetryProviders, id: \.self) { provider in
-                            Button("Retry with \(provider.rawValue)") {
+                            Button {
                                 state.onRetry?(provider)
+                            } label: {
+                                Label("Retry with \(provider.rawValue)", systemImage: provider.sfSymbol)
                             }
                         }
                     } label: {
@@ -255,4 +266,57 @@ private final class DragHandleView: NSView {
     }
 
     override var mouseDownCanMoveWindow: Bool { true }
+}
+
+private extension View {
+    /// Custom delayed hover tooltip. SwiftUI's `.help(...)` relies on
+    /// NSToolTipManager, which does not reliably show tooltips on the
+    /// nonactivating floating popup panel (never becomes key window).
+    func popupButtonHelp(_ text: String) -> some View {
+        modifier(PopupButtonHelpModifier(text: text))
+    }
+}
+
+private struct PopupButtonHelpModifier: ViewModifier {
+    let text: String
+    @State private var isHovering = false
+    @State private var showTooltip = false
+    @State private var hoverTask: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                isHovering = hovering
+                hoverTask?.cancel()
+                if hovering {
+                    hoverTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 500 ms
+                        guard !Task.isCancelled, isHovering else { return }
+                        showTooltip = true
+                    }
+                } else {
+                    showTooltip = false
+                }
+            }
+            .overlay(alignment: .top) {
+                if showTooltip {
+                    Text(text)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                        .fixedSize()
+                        .offset(y: -28)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: showTooltip)
+    }
 }
