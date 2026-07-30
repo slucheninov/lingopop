@@ -28,12 +28,14 @@ final class PopupState: ObservableObject {
 
     @Published var phase: Phase = .loading(operation: .translate, originalPreview: "")
     @Published var availableRetryProviders: [ProviderType] = []
+    @Published var availableTranslateProviders: [ProviderType] = []
+    @Published var activeTranslateProvider: ProviderType? = nil
     var onRetry: ((ProviderType) -> Void)?
     var onReplace: ((String) -> Void)?
     var onRetranslate: ((String) -> Void)?
     var onRewrite: ((String) -> Void)?
     var onExplain: ((String) -> Void)?
-    var onTranslate: ((String) -> Void)?
+    var onTranslate: ((String, ProviderType) -> Void)?
 
     func setLoading(operation: AIOperation, original: String) {
         phase = .loading(operation: operation, originalPreview: String(original.prefix(120)))

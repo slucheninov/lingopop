@@ -73,12 +73,45 @@ struct PopupView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .popupButtonHelp("Copy")
-                Button(action: { state.onTranslate?(text) }) {
-                    Label("Translate", systemImage: "globe")
+                HStack(spacing: 4) {
+                    Button(action: {
+                        let provider = state.activeTranslateProvider ?? state.availableTranslateProviders.first
+                        guard let provider else { return }
+                        state.onTranslate?(text, provider)
+                    }) {
+                        Label("Translate", systemImage: "globe")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .popupButtonHelp("Translate with active provider")
+
+                    if !state.availableTranslateProviders.isEmpty {
+                        Menu {
+                            ForEach(state.availableTranslateProviders, id: \.self) { provider in
+                                Button {
+                                    state.onTranslate?(text, provider)
+                                } label: {
+                                    HStack {
+                                        Label(provider.rawValue, systemImage: provider.sfSymbol)
+                                        if provider == state.activeTranslateProvider {
+                                            Spacer(minLength: 8)
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .semibold))
+                                .frame(minWidth: 14, minHeight: 14)
+                        }
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .popupButtonHelp("Translate with…")
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .popupButtonHelp("Translate")
                 Spacer(minLength: 0)
                 if !state.availableRetryProviders.isEmpty {
                     Menu {

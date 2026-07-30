@@ -50,8 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         popup.state.onExplain = { [weak self] text in
             self?.explainResult(text)
         }
-        popup.state.onTranslate = { [weak self] text in
-            self?.translateScreenOCR(text)
+        popup.state.onTranslate = { [weak self] text, provider in
+            self?.translateScreenOCR(text, provider: provider)
         }
         popup.onClose = { [weak self] in
             self?.lastCapturedText = nil
@@ -421,6 +421,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 statusController.apply(.idle)
                 popup.state.setOCR(ocrText)
                 popup.state.availableRetryProviders = visionCapableProviders()
+                popup.state.availableTranslateProviders = translateProviders()
+                popup.state.activeTranslateProvider = settingsStore.activeProvider
             } catch CaptureOverlayError.cancelled {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
             } catch ScreenCaptureError.tooSmall {
@@ -516,6 +518,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func translateProviders() -> [ProviderType] {
+        ProviderType.allCases.filter { isProviderReady($0, for: .screenTranslate) }
+    }
+
     private func isProviderReady(_ provider: ProviderType, for operation: AIOperation) -> Bool {
         guard let impl = translationService.providers[provider] else { return false }
         guard impl.supportedOperations.contains(operation) else { return false }
@@ -581,7 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
     }
 
-    private func translateScreenOCR(_ text: String) {
+    private func translateScreenOCR(_ text: String, provider: ProviderType) {
         guard let cursor = lastCursorPosition,
               let target = lastTargetLanguage else { return }
         let source = lastDetectedSource
@@ -592,8 +598,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 cursorPosition: cursor,
                 detectedSource: source,
                 targetLanguage: target,
-                primary: self.settingsStore.activeProvider,
-                allowFallback: true
+                primary: provider,
+                allowFallback: provider == self.settingsStore.activeProvider
             )
         }
     }
