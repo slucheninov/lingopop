@@ -36,12 +36,13 @@ final class OperationRunner {
             if allowFallback,
                let fallback = settingsStore.fallback(for: primary),
                fallback != primary,
-               isProviderReady(fallback, for: operation),
                shouldRetryWithFallback(primaryError) {
                 let fallbackConfig = settingsStore.config(for: fallback, overrideTargetLanguage: targetLanguage)
                 do {
+                    try validateProvider(fallback, config: fallbackConfig, operation: operation)
                     var result = try await translationService.execute(text: text, operation: operation, config: fallbackConfig)
                     result.viaFallback = true
+                    result.fallbackInfo = FallbackInfo(primaryProvider: primary, error: primaryError)
                     return OperationRunOutcome(result: result, detectedSource: detectedSource, viaFallback: true)
                 } catch {
                     log.error("Fallback also failed: \(error.localizedDescription, privacy: .public)")
@@ -59,13 +60,6 @@ final class OperationRunner {
         if impl.requiresApiKey, config.apiKey.isEmpty {
             throw TranslationError.missingApiKey
         }
-    }
-
-    private func isProviderReady(_ provider: ProviderType, for operation: AIOperation) -> Bool {
-        guard let impl = translationService.providers[provider] else { return false }
-        guard impl.supportedOperations.contains(operation) else { return false }
-        if !impl.requiresApiKey { return true }
-        return settingsStore.hasApiKey(for: provider)
     }
 
     private func shouldRetryWithFallback(_ error: TranslationError) -> Bool {

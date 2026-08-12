@@ -177,6 +177,23 @@ struct PopupView: View {
                         .foregroundStyle(.orange)
                 }
             }
+            if let fallback = result.fallbackInfo {
+                DisclosureGroup("Why fallback was used") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(fallback.primaryProvider.rawValue): \(fallback.message)")
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let details = fallback.details {
+                            Text(details)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .font(.system(size: 11))
+                .tint(.orange)
+            }
             Text(result.translated)
                 .font(.system(size: CGFloat(popupFontSize)))
                 .textSelection(.enabled)

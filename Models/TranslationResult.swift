@@ -2,12 +2,10 @@ import Foundation
 
 func redactedURL(_ urlString: String) -> String {
     guard var components = URLComponents(string: urlString) else { return "<redacted-url>" }
-    let sensitiveKeys = Set(["key", "api_key", "apikey"])
-    components.queryItems = components.queryItems?.map { item in
-        sensitiveKeys.contains(item.name.lowercased())
-            ? URLQueryItem(name: item.name, value: "REDACTED")
-            : item
-    }
+    components.user = nil
+    components.password = nil
+    components.query = nil
+    components.fragment = nil
     return components.string ?? "<redacted-url>"
 }
 
@@ -23,6 +21,19 @@ struct TranslationResult {
     let provider: ProviderType
     let operation: AIOperation
     var viaFallback: Bool = false
+    var fallbackInfo: FallbackInfo? = nil
+}
+
+struct FallbackInfo {
+    let primaryProvider: ProviderType
+    let message: String
+    let details: String?
+
+    init(primaryProvider: ProviderType, error: TranslationError) {
+        self.primaryProvider = primaryProvider
+        self.message = error.userSummary
+        self.details = error.technicalDetails
+    }
 }
 
 enum TranslationError: LocalizedError {
