@@ -102,17 +102,26 @@ Workflow потребує токен що може писати релізи в 
 Основний шлях — єдиний оркестратор:
 
 ```bash
-./scripts/publish-release.sh patch
-./scripts/publish-release.sh minor --message "Release v0.4.0"
-./scripts/publish-release.sh 0.4.1
+./scripts/publish-release.sh patch --note "Fixed fallback handling for provider errors"
+./scripts/publish-release.sh minor \
+  --note "Added a new translation workflow" \
+  --note "Improved popup accessibility" \
+  --message "Release v0.4.0"
+./scripts/publish-release.sh 0.4.1 --notes-file /path/to/release-notes.md
 ```
 
-Він перевіряє чистий `main`, синхронність з `origin/main` та відсутність дубльованого тегу/релізу, збільшує `MARKETING_VERSION` і `CURRENT_PROJECT_VERSION`, запускає `./build.sh`, комітить лише `project.yml` і пушить приватний `main`. Далі він синхронізує `public-repo/`, створює annotated-тег у приватному репо, чекає саме на запущений цим тегом workflow `Release` і перевіряє публічні `.dmg`, `.zip` та їх `SHA256SUMS`.
+Він перевіряє чистий `main`, синхронність з `origin/main` та відсутність дубльованого тегу/релізу, збільшує `MARKETING_VERSION` і `CURRENT_PROJECT_VERSION`, додає секцію нової версії до `public-repo/CHANGELOG.md`, запускає `./build.sh`, атомарно комітить `project.yml` разом із changelog і пушить приватний `main`. Далі він запускає `scripts/sync-public-repo.sh`, який синхронізує changelog та іншу документацію у публічний репо, створює annotated-тег у приватному репо, чекає саме на запущений цим тегом workflow `Release` і перевіряє публічні `.dmg`, `.zip` та їх `SHA256SUMS`.
+
+Release notes обов'язкові для нового випуску й ніколи не генеруються автоматично:
+
+- `--note TEXT` додає один пункт списку; опцію можна повторювати.
+- `--notes-file PATH` вставляє вміст Markdown-файлу як тіло секції. Файл не повинен містити ATX-заголовок рівня `##` (включно з порожнім `##`), бо заголовок версії створює оркестратор. Setext-заголовки (`Title` + `---`) дозволені як частина тіла.
+- `--note` та `--notes-file` взаємовиключні.
 
 Перед справжнім випуском можна подивитися план без запису файлів і без мережевих запитів:
 
 ```bash
-./scripts/publish-release.sh patch --dry-run
+./scripts/publish-release.sh patch --note "Describe the release" --dry-run
 ```
 
 Dry-run працює і з dirty worktree, але явно покаже це як blocker для справжнього запуску. Remote-теги, GitHub release та актуальність `origin/main` у dry-run навмисно не перевіряються, щоб він залишався no-network. Для Git read-команд встановлюється `GIT_OPTIONAL_LOCKS=0`, тому dry-run також не оновлює optional Git metadata на кшталт index refresh.
@@ -120,10 +129,10 @@ Dry-run працює і з dirty worktree, але явно покаже це я�
 `--skip-build` — ризикований явний override. Скрипт виділяє його попередженням; використовувати лише коли цей самий source commit уже перевірений:
 
 ```bash
-./scripts/publish-release.sh 0.4.1 --skip-build
+./scripts/publish-release.sh 0.4.1 --skip-build --note "Describe the release"
 ```
 
-CHANGELOG автоматично не генерується: перед випуском вручну оновити `public-repo/CHANGELOG.md` та закомітити це звичайним commit, щоб release-коміт залишався атомарним і містив лише `project.yml`.
+Dry-run перевіряє release notes та показує запланований заголовок changelog, але не змінює `project.yml` або `public-repo/CHANGELOG.md`.
 
 ### Продовження після часткового збою
 
@@ -133,7 +142,7 @@ Remote Git/GitHub state є джерелом правди. Якщо запуск 
 ./scripts/publish-release.sh 0.4.1
 ```
 
-Resume підтримується лише коли `HEAD` — валідний release-коміт, який змінив тільки `project.yml`, збільшив build number рівно на 1, а `origin/main` вказує на цей commit або його прямого parent. Наявні local/remote tag приймаються лише якщо вони вказують на цей exact commit; тег ніколи не пересувається і force-push не використовується. Якщо публічний release вже існує, скрипт знаходить відповідний tag-triggered run і повторно перевіряє assets/checksums.
+Для resume release notes повторно передавати не потрібно: секція вже є в release-коміті. Resume підтримується лише коли `HEAD` — валідний release-коміт, який змінив тільки `project.yml` і `public-repo/CHANGELOG.md`, збільшив build number рівно на 1, додав рівно одну секцію цільової версії, а `origin/main` вказує на цей commit або його прямого parent. Наявні local/remote tag приймаються лише якщо вони вказують на цей exact commit; тег ніколи не пересувається і force-push не використовується. Якщо публічний release вже існує, скрипт знаходить відповідний tag-triggered run і повторно перевіряє assets/checksums.
 
 CI (`.github/workflows/release.yml`) після push тегу:
 1. Встановлює Xcode + xcodegen на macos-14 runner.

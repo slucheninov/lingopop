@@ -8,19 +8,30 @@ PUBLIC_REPO="${PUBLIC_REPO:-slucheninov/lingopop}"
 WORK_DIR=""
 PHASE="startup"
 PROJECT_BACKUP=""
+CHANGELOG_BACKUP=""
 RELEASE_COMMITTED=0
 
 cleanup() {
     local status=$?
     trap - ERR
     set +e
-    if [[ -n "$PROJECT_BACKUP" && -f "$PROJECT_BACKUP" && "$RELEASE_COMMITTED" -eq 0 ]]; then
-        if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
-            ! git -C "$PROJECT_DIR" diff --cached --quiet -- project.yml; then
-            git -C "$PROJECT_DIR" reset -q HEAD -- project.yml
+    if [[ "$RELEASE_COMMITTED" -eq 0 ]]; then
+        if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            if [[ -n "$PROJECT_BACKUP" && -f "$PROJECT_BACKUP" ]]; then
+                if ! git -C "$PROJECT_DIR" diff --cached --quiet -- project.yml; then
+                    git -C "$PROJECT_DIR" reset -q HEAD -- project.yml
+                fi
+                cp "$PROJECT_BACKUP" "$PROJECT_DIR/project.yml"
+                echo "→ Restored project.yml because the release commit was not created." >&2
+            fi
+            if [[ -n "$CHANGELOG_BACKUP" && -f "$CHANGELOG_BACKUP" ]]; then
+                if ! git -C "$PROJECT_DIR" diff --cached --quiet -- public-repo/CHANGELOG.md; then
+                    git -C "$PROJECT_DIR" reset -q HEAD -- public-repo/CHANGELOG.md
+                fi
+                cp "$CHANGELOG_BACKUP" "$PROJECT_DIR/public-repo/CHANGELOG.md"
+                echo "→ Restored public-repo/CHANGELOG.md because the release commit was not created." >&2
+            fi
         fi
-        cp "$PROJECT_BACKUP" "$PROJECT_DIR/project.yml"
-        echo "→ Restored project.yml because the release commit was not created." >&2
     fi
     if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
         rm -rf -- "$WORK_DIR"
@@ -40,15 +51,20 @@ trap on_error ERR
 usage() {
     cat <<'EOF'
 Usage:
-  ./scripts/publish-release.sh patch|minor|major|X.Y.Z [--dry-run] [--skip-build] [--message TEXT]
+  ./scripts/publish-release.sh patch|minor|major|X.Y.Z --note TEXT [--note TEXT ...] [options]
+  ./scripts/publish-release.sh patch|minor|major|X.Y.Z --notes-file PATH [options]
 
 Options:
   --dry-run       Print the release plan. No files, Git refs, remotes, or network are changed.
   --skip-build    Skip ./build.sh (risky; intended only when the same commit was already verified).
   --message TEXT  Commit message (default: Release vX.Y.Z).
+  --note TEXT     Add one changelog bullet. Repeat for multiple release notes.
+  --notes-file PATH
+                  Read the changelog body as Markdown from PATH. Mutually exclusive with --note.
   -h, --help      Show this help.
 
 To resume a partially completed release, invoke the script with the exact X.Y.Z.
+Release notes are not required for a validated resume because they are already committed.
 EOF
 }
 
@@ -110,6 +126,28 @@ project_value_at_commit() {
     '
 }
 
+changelog_version_count() {
+    local file=$1 version=$2
+    awk -v prefix="## v$version" '
+        index($0, prefix) == 1 {
+            suffix = substr($0, length(prefix) + 1, 1)
+            if (suffix == "" || suffix ~ /[[:space:]]/) count++
+        }
+        END { print count + 0 }
+    ' "$file"
+}
+
+changelog_version_count_at_commit() {
+    local commit=$1 version=$2
+    git show "$commit:public-repo/CHANGELOG.md" 2>/dev/null | awk -v prefix="## v$version" '
+        index($0, prefix) == 1 {
+            suffix = substr($0, length(prefix) + 1, 1)
+            if (suffix == "" || suffix ~ /[[:space:]]/) count++
+        }
+        END { print count + 0 }
+    '
+}
+
 origin_repo_slug() {
     local url=$1 slug
     case "$url" in
@@ -125,16 +163,68 @@ origin_repo_slug() {
 
 is_valid_resume_commit() {
     local target=$1 current_build=$2
-    local parent parent_version parent_build changed
+    local parent parent_version parent_build changed validation_dir status
     parent=$(git rev-parse HEAD^ 2>/dev/null) || return 1
-    changed=$(git diff-tree --no-commit-id --name-only -r HEAD)
-    [[ "$changed" == "project.yml" ]] || return 1
+    changed=$(git diff-tree --no-commit-id --name-only -r HEAD | LC_ALL=C sort)
+    [[ "$changed" == $'project.yml\npublic-repo/CHANGELOG.md' ]] || return 1
     parent_version=$(project_value_at_commit "$parent" MARKETING_VERSION) || return 1
     parent_build=$(project_value_at_commit "$parent" CURRENT_PROJECT_VERSION) || return 1
     is_semver "$parent_version" || return 1
     [[ "$parent_build" =~ ^[0-9]+$ ]] || return 1
     version_gt "$target" "$parent_version" || return 1
     (( current_build == parent_build + 1 )) || return 1
+    validation_dir=$(mktemp -d "${TMPDIR:-/tmp}/lingopop-resume-validate.XXXXXX") || return 1
+    (
+        git show "$parent:project.yml" > "$validation_dir/parent-project.yml" || exit 1
+        git show "HEAD:project.yml" > "$validation_dir/head-project.yml" || exit 1
+        awk -v version="$target" -v build="$current_build" '
+            $1 == "MARKETING_VERSION:" { sub(/"[^"]*"/, "\"" version "\""); marketing++; print; next }
+            $1 == "CURRENT_PROJECT_VERSION:" { sub(/"[^"]*"/, "\"" build "\""); current++; print; next }
+            { print }
+            END { if (marketing != 1 || current != 1) exit 2 }
+        ' "$validation_dir/parent-project.yml" > "$validation_dir/expected-project.yml" || exit 1
+        cmp -s "$validation_dir/expected-project.yml" "$validation_dir/head-project.yml" || exit 1
+
+        git show "$parent:public-repo/CHANGELOG.md" > "$validation_dir/parent-changelog.md" || exit 1
+        git show "HEAD:public-repo/CHANGELOG.md" > "$validation_dir/head-changelog.md" || exit 1
+        awk -v version="$target" '
+            function is_version_heading(line, marker, suffix) {
+                marker = "## v" version
+                if (index(line, marker) != 1) return 0
+                suffix = substr(line, length(marker) + 1, 1)
+                return suffix == "" || suffix ~ /[[:space:]]/
+            }
+            function is_exact_heading(line, prefix, date) {
+                prefix = "## v" version " — "
+                if (index(line, prefix) != 1) return 0
+                date = substr(line, length(prefix) + 1)
+                return length(date) == 10 &&
+                    date ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/
+            }
+            /^## v/ && !first_release_seen {
+                first_release_seen = 1
+                if (is_exact_heading($0)) first_release_is_target = 1
+            }
+            is_version_heading($0) {
+                target_count++
+                if (is_exact_heading($0)) {
+                    exact_count++
+                    removing = 1
+                    next
+                }
+            }
+            removing && /^##([[:space:]]|$)/ { removing = 0 }
+            !removing { print }
+            END {
+                if (target_count != 1 || exact_count != 1 || !first_release_is_target || removing) exit 2
+            }
+        ' "$validation_dir/head-changelog.md" > "$validation_dir/stripped-changelog.md" || exit 1
+        cmp -s "$validation_dir/stripped-changelog.md" "$validation_dir/parent-changelog.md" || exit 1
+        [[ "$(changelog_version_count_at_commit "$parent" "$target")" == "0" ]] || exit 1
+    )
+    status=$?
+    rm -rf -- "$validation_dir"
+    return "$status"
 }
 
 remote_tag_commit() {
@@ -175,6 +265,8 @@ VERSION_ARG=""
 DRY_RUN=0
 SKIP_BUILD=0
 COMMIT_MESSAGE=""
+NOTES_FILE=""
+RELEASE_NOTES=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -194,6 +286,18 @@ while [[ $# -gt 0 ]]; do
         --message)
             [[ $# -ge 2 && -n "$2" ]] || die "--message requires non-empty text"
             COMMIT_MESSAGE=$2
+            shift 2
+            ;;
+        --note)
+            [[ $# -ge 2 && -n "$2" ]] || die "--note requires non-empty text"
+            [[ "$2" != *$'\n'* && "$2" != *$'\r'* ]] || die "--note must be a single line; use --notes-file for Markdown"
+            RELEASE_NOTES+=("$2")
+            shift 2
+            ;;
+        --notes-file)
+            [[ $# -ge 2 && -n "$2" ]] || die "--notes-file requires a path"
+            [[ -z "$NOTES_FILE" ]] || die "specify --notes-file only once"
+            NOTES_FILE=$2
             shift 2
             ;;
         -h|--help)
@@ -251,6 +355,30 @@ fi
 TAG="v$TARGET_VERSION"
 [[ -n "$COMMIT_MESSAGE" ]] || COMMIT_MESSAGE="Release $TAG"
 
+if [[ ${#RELEASE_NOTES[@]} -gt 0 && -n "$NOTES_FILE" ]]; then
+    die "--note and --notes-file are mutually exclusive"
+fi
+NOTES_BODY=""
+if [[ "$RESUME" -eq 0 ]]; then
+    if [[ -n "$NOTES_FILE" ]]; then
+        [[ -f "$NOTES_FILE" && -r "$NOTES_FILE" ]] || die "cannot read notes file: $NOTES_FILE"
+        NOTES_BODY=$(<"$NOTES_FILE")
+        [[ -n "${NOTES_BODY//[[:space:]]/}" ]] || die "notes file must not be empty"
+        if printf '%s\n' "$NOTES_BODY" | grep -Eq '^##([[:space:]]|$)'; then
+            die "notes file must contain a release body, not a level-2 changelog heading"
+        fi
+    elif [[ ${#RELEASE_NOTES[@]} -gt 0 ]]; then
+        for note in "${RELEASE_NOTES[@]}"; do
+            NOTES_BODY+="- $note"$'\n'
+        done
+        NOTES_BODY=${NOTES_BODY%$'\n'}
+    else
+        die "release notes are required: pass --note TEXT (repeatable) or --notes-file PATH"
+    fi
+elif [[ ${#RELEASE_NOTES[@]} -gt 0 || -n "$NOTES_FILE" ]]; then
+    die "release notes must not be supplied when resuming an already committed version"
+fi
+
 BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
 UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
 ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
@@ -262,6 +390,12 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "Current version/build: $CURRENT_VERSION ($CURRENT_BUILD)"
     echo "Target version/build:  $TARGET_VERSION ($TARGET_BUILD)"
     echo "Commit message:        $COMMIT_MESSAGE"
+    echo "Changelog heading:     ## v$TARGET_VERSION — $(date +%Y-%m-%d)"
+    if [[ -n "$NOTES_FILE" ]]; then
+        echo "Release notes:         $NOTES_FILE"
+    else
+        echo "Release notes:         ${#RELEASE_NOTES[@]} --note value(s)"
+    fi
     echo "Public repository:     $PUBLIC_REPO"
     [[ "$SKIP_BUILD" -eq 0 ]] || echo "WARNING: --skip-build would bypass local build verification."
     blockers=0
@@ -277,7 +411,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "BLOCKER for real run: origin/upstream is missing or upstream is not origin/main." >&2
         blockers=1
     fi
-    echo "Planned phases: preflight/fetch → build → version commit → push private main → sync public docs → push annotated tag → wait for exact CI run → verify public assets and checksums"
+    echo "Planned phases: preflight/fetch → update version and changelog → build → release commit → push private main → sync public docs → push annotated tag → wait for exact CI run → verify public assets and checksums"
     if [[ "$blockers" -eq 1 ]]; then
         echo "Dry-run completed with blockers; no changes were made."
     else
@@ -338,10 +472,12 @@ if [[ "$RESUME" -eq 0 ]]; then
     [[ -z "$REMOTE_TAG_COMMIT" ]] || die "remote tag $TAG already exists"
     [[ "$PUBLIC_RELEASE_EXISTS" -eq 0 ]] || die "public release $TAG already exists"
 
-    PHASE="update project version"
+    PHASE="update release files"
     PROJECT_BACKUP="$WORK_DIR/project.yml.original"
+    CHANGELOG_BACKUP="$WORK_DIR/CHANGELOG.md.original"
     cp project.yml "$PROJECT_BACKUP"
-    UPDATE_FILE=$(mktemp "$PROJECT_DIR/.publish-project.XXXXXX")
+    cp public-repo/CHANGELOG.md "$CHANGELOG_BACKUP"
+    UPDATE_FILE="$WORK_DIR/project.yml.updated"
     awk -v version="$TARGET_VERSION" -v build="$TARGET_BUILD" '
         $1 == "MARKETING_VERSION:" { sub(/"[^"]*"/, "\"" version "\""); marketing++; print; next }
         $1 == "CURRENT_PROJECT_VERSION:" { sub(/"[^"]*"/, "\"" build "\""); current++; print; next }
@@ -350,12 +486,35 @@ if [[ "$RESUME" -eq 0 ]]; then
     ' project.yml > "$UPDATE_FILE" || die "could not safely update the two version keys"
     mv "$UPDATE_FILE" project.yml
 
+    [[ "$(changelog_version_count public-repo/CHANGELOG.md "$TARGET_VERSION")" == "0" ]] ||
+        die "public-repo/CHANGELOG.md already contains a section for $TAG"
+    CHANGELOG_UPDATE="$WORK_DIR/CHANGELOG.md.updated"
+    NOTES_TEMP="$WORK_DIR/release-notes.md"
+    printf '%s\n' "$NOTES_BODY" > "$NOTES_TEMP"
+    RELEASE_DATE=$(date +%Y-%m-%d)
+    awk -v heading="## v$TARGET_VERSION — $RELEASE_DATE" -v notes_file="$NOTES_TEMP" '
+        !inserted && /^##([[:space:]]|$)/ {
+            print heading
+            print ""
+            while ((getline line < notes_file) > 0) print line
+            close(notes_file)
+            print ""
+            inserted = 1
+        }
+        { print }
+        END { if (!inserted) exit 2 }
+    ' public-repo/CHANGELOG.md > "$CHANGELOG_UPDATE" ||
+        die "could not find the first release heading in public-repo/CHANGELOG.md"
+    mv "$CHANGELOG_UPDATE" public-repo/CHANGELOG.md
+
     [[ "$(read_project_value project.yml MARKETING_VERSION)" == "$TARGET_VERSION" ]] ||
         die "MARKETING_VERSION verification failed"
     [[ "$(read_project_value project.yml CURRENT_PROJECT_VERSION)" == "$TARGET_BUILD" ]] ||
         die "CURRENT_PROJECT_VERSION verification failed"
-    [[ "$(git diff --name-only)" == "project.yml" ]] ||
-        die "version update changed files outside project.yml"
+    [[ "$(changelog_version_count public-repo/CHANGELOG.md "$TARGET_VERSION")" == "1" ]] ||
+        die "changelog insertion verification failed"
+    [[ "$(git diff --name-only)" == $'project.yml\npublic-repo/CHANGELOG.md' ]] ||
+        die "release update changed files outside project.yml and public-repo/CHANGELOG.md"
     [[ "$(git diff --numstat -- project.yml | awk '{print $1 ":" $2}')" == "2:2" ]] ||
         die "expected exactly two replaced lines in project.yml"
 
@@ -368,13 +527,14 @@ if [[ "$RESUME" -eq 0 ]]; then
     fi
 
     PHASE="commit release version"
-    git add -- project.yml
-    [[ "$(git diff --cached --name-only)" == "project.yml" ]] ||
-        die "staged allowlist violation: only project.yml may be committed"
+    git add -- project.yml public-repo/CHANGELOG.md
+    [[ "$(git diff --cached --name-only)" == $'project.yml\npublic-repo/CHANGELOG.md' ]] ||
+        die "staged allowlist violation: only project.yml and public-repo/CHANGELOG.md may be committed"
     git commit -m "$COMMIT_MESSAGE"
     RELEASE_COMMIT=$(git rev-parse HEAD)
     RELEASE_COMMITTED=1
     PROJECT_BACKUP=""
+    CHANGELOG_BACKUP=""
 fi
 
 if [[ -n "$LOCAL_TAG_COMMIT" && "$LOCAL_TAG_COMMIT" != "$RELEASE_COMMIT" ]]; then
