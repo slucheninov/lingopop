@@ -99,66 +99,49 @@ Workflow потребує токен що може писати релізи в 
 
 ## Випуск нової версії
 
-Повний чеклист для випуску, наприклад `0.2.2`:
-
-### 1. Переконатися що гілка чиста
+Основний шлях — єдиний оркестратор:
 
 ```bash
-git pull
-git status   # має бути clean
+./scripts/publish-release.sh patch
+./scripts/publish-release.sh minor --message "Release v0.4.0"
+./scripts/publish-release.sh 0.4.1
 ```
 
-### 2. Оновити версію в project.yml
+Він перевіряє чистий `main`, синхронність з `origin/main` та відсутність дубльованого тегу/релізу, збільшує `MARKETING_VERSION` і `CURRENT_PROJECT_VERSION`, запускає `./build.sh`, комітить лише `project.yml` і пушить приватний `main`. Далі він синхронізує `public-repo/`, створює annotated-тег у приватному репо, чекає саме на запущений цим тегом workflow `Release` і перевіряє публічні `.dmg`, `.zip` та їх `SHA256SUMS`.
 
-У `project.yml` змінити `MARKETING_VERSION`:
-
-```yaml
-MARKETING_VERSION: "0.2.2"
-```
-
-Це потрібно щоб дев-збірки (`./build.sh`) та вкладка About у застосунку показували правильну версію. CI бере версію з тегу, але `project.yml` має бути синхронізований.
-
-### 3. Оновити CHANGELOG
-
-У `public-repo/CHANGELOG.md` додати запис вгорі:
-
-```markdown
-## v0.2.2 — 2026-05-17
-
-- Що змінилось
-- Що полагодили
-```
-
-### 4. Закомітити і запушити
+Перед справжнім випуском можна подивитися план без запису файлів і без мережевих запитів:
 
 ```bash
-git add project.yml public-repo/CHANGELOG.md
-git commit -m "Release v0.2.2"
-git push
+./scripts/publish-release.sh patch --dry-run
 ```
 
-### 5. Поставити тег → запускає CI
+Dry-run працює і з dirty worktree, але явно покаже це як blocker для справжнього запуску. Remote-теги, GitHub release та актуальність `origin/main` у dry-run навмисно не перевіряються, щоб він залишався no-network. Для Git read-команд встановлюється `GIT_OPTIONAL_LOCKS=0`, тому dry-run також не оновлює optional Git metadata на кшталт index refresh.
+
+`--skip-build` — ризикований явний override. Скрипт виділяє його попередженням; використовувати лише коли цей самий source commit уже перевірений:
 
 ```bash
-git tag v0.2.2
-git push origin v0.2.2
+./scripts/publish-release.sh 0.4.1 --skip-build
 ```
 
-CI (`.github/workflows/release.yml`) зробить все інше:
-1. Встановить Xcode + xcodegen на macos-14 раннері
-2. Запустить `./scripts/release.sh 0.2.2` → `dist/LingoPop-0.2.2-mac-universal.{dmg,zip}`
-3. Згенерує release notes з git log з попереднього тегу
-4. Створить реліз у публічному репо через `gh release create v0.2.2`
+CHANGELOG автоматично не генерується: перед випуском вручну оновити `public-repo/CHANGELOG.md` та закомітити це звичайним commit, щоб release-коміт залишався атомарним і містив лише `project.yml`.
 
-Через ~5 хвилин реліз з'явиться в публічному репо.
+### Продовження після часткового збою
 
-### 6. Синхронізувати документацію (якщо змінювались README / скріншоти)
+Remote Git/GitHub state є джерелом правди. Якщо запуск уже створив version commit, але зупинився на push, public sync, tag, CI або перевірці assets, повторити команду з **точною** версією:
 
 ```bash
-./scripts/sync-public-repo.sh "Update docs for v0.2.2"
+./scripts/publish-release.sh 0.4.1
 ```
 
-Скрипт клонує публічне репо, синхронізує `public-repo/` в нього (зберігаючи скріншоти), комітить і пушить.
+Resume підтримується лише коли `HEAD` — валідний release-коміт, який змінив тільки `project.yml`, збільшив build number рівно на 1, а `origin/main` вказує на цей commit або його прямого parent. Наявні local/remote tag приймаються лише якщо вони вказують на цей exact commit; тег ніколи не пересувається і force-push не використовується. Якщо публічний release вже існує, скрипт знаходить відповідний tag-triggered run і повторно перевіряє assets/checksums.
+
+CI (`.github/workflows/release.yml`) після push тегу:
+1. Встановлює Xcode + xcodegen на macos-14 runner.
+2. Запускає `./scripts/release.sh <version>`.
+3. Генерує release notes та `SHA256SUMS`.
+4. Створює release у публічному репо.
+
+Локальна перевірка YAML або локальна збірка не вважається підтвердженням CI: оркестратор завершується успішно лише після `conclusion=success` exact workflow run та перевірки завантажених артефактів.
 
 ---
 
@@ -183,14 +166,14 @@ CI (`.github/workflows/release.yml`) зробить все інше:
 
 ## Версіонування
 
-Версія живе в одному місці: `MARKETING_VERSION` у `project.yml`.
+Версія і build number живуть у `project.yml`: `MARKETING_VERSION` має SemVer `X.Y.Z`, а числовий `CURRENT_PROJECT_VERSION` збільшується на 1 для кожного випуску.
 
 - `./build.sh` → бере з `project.yml` (About у застосунку показує цю версію)
 - `./scripts/release.sh` без аргументу → читає з `project.yml` через awk
 - `./scripts/release.sh 0.2.2` → перекриває аргументом (CI використовує тег)
 - `Info.plist` → `CFBundleShortVersionString = $(MARKETING_VERSION)` (змінна збірки, не рядок)
 
-Якщо тег `v0.2.2` вже існує — потрібно спочатку видалити реліз у публічному репо, бо `gh release create` відмовляється перезаписувати. Простіше використати новий тег.
+Теги релізів незмінні. Якщо тег уже вказує не на очікуваний release-коміт, потрібно випустити нову версію; скрипт не видаляє та не пересуває теги.
 
 ## Підписання коду — поточний стан
 
