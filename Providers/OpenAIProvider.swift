@@ -159,7 +159,7 @@ struct OpenAIProvider: AIProvider {
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            guard var text = decoded.choices.first?.message.content?.trimmingCharacters(in: .whitespacesAndNewlines),
+            guard var text = decoded.choices.first?.message.content.map(PromptBuilder.sanitizeOutput),
                   !text.isEmpty else { throw TranslationError.emptyResponse }
             if decoded.choices.first?.finish_reason == "length" {
                 text += "\n\n⚠️ Response was truncated (max tokens reached)"

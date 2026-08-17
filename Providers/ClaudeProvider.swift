@@ -162,8 +162,7 @@ struct ClaudeProvider: AIProvider {
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            var text = decoded.content.compactMap { $0.text }.joined()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            var text = PromptBuilder.sanitizeOutput(decoded.content.compactMap { $0.text }.joined())
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
             if decoded.stop_reason == "max_tokens" {
                 text += "\n\n⚠️ Response was truncated (max tokens reached)"

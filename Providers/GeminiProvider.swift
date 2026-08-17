@@ -162,10 +162,11 @@ struct GeminiProvider: AIProvider {
 
         do {
             let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            var text = decoded.candidates
-                .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
-                .joined()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            var text = PromptBuilder.sanitizeOutput(
+                decoded.candidates
+                    .compactMap { $0.content?.parts?.compactMap { $0.text }.joined() }
+                    .joined()
+            )
             guard !text.isEmpty else { throw TranslationError.emptyResponse }
             if decoded.candidates.first?.finishReason == "MAX_TOKENS" {
                 text += "\n\n⚠️ Response was truncated (max tokens reached)"
