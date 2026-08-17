@@ -4,6 +4,10 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.12 — 2026-08-17
+
+- Enhance output sanitization in PromptBuilder
+
 ## v0.3.7 — 2026-07-25 Menu history Display setting
 
 - New **Display** setting in **Settings → Main → Limits** — controls how many entries appear in the status-bar menu, independent of **History size**
