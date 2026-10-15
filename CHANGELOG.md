@@ -10,7 +10,6 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) a
 
 - Internal refactoring of the popup actions, the shared error model and the Providers settings tab
 - The popup window now resizes itself together with its content
-
 - Google Cloud Translation API key is now sent in the `X-goog-api-key` header instead of the URL
 
 ## v0.3.15 — 2026-10-15
