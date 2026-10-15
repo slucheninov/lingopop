@@ -2,9 +2,24 @@ import Foundation
 
 struct OpenAIProvider: AIProvider {
 
-    let type: ProviderType = .openai
-    let defaultBaseURL = "https://api.openai.com"
-    let availableModels = [
+    let type: ProviderType
+    let defaultBaseURL: String
+    let availableModels: [String]
+
+    init(
+        type: ProviderType = .openai,
+        defaultBaseURL: String = "https://api.openai.com",
+        availableModels: [String] = OpenAIProvider.openAIModels
+    ) {
+        self.type = type
+        self.defaultBaseURL = defaultBaseURL
+        self.availableModels = availableModels
+    }
+
+    static let openAIModels = [
+        "gpt-6-astra",
+        "gpt-6.1-sol",
+        "gpt-6-luna",
         "gpt-5.6-luna",
         "gpt-5.6-terra",
         "gpt-5.6-sol",

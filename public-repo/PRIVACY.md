@@ -4,7 +4,7 @@ LingoPop is a macOS menu-bar app. This document describes what data the app hand
 
 ## Data the app stores locally
 
-- **API keys** for AI providers (Claude, OpenAI, Gemini, Google Translate) are stored in `~/Library/Application Support/LingoPop/secrets.dat`. The file is encrypted with AES-GCM using a symmetric key derived from your machine's hardware UUID (`IOPlatformUUID`) plus a static salt. Decryption requires running LingoPop on the same Mac. File permissions are 0600 (owner read/write only).
+- **API keys** for AI providers (Claude, OpenAI, Gemini, Grok, Google Translate) are stored in `~/Library/Application Support/LingoPop/secrets.dat`. The file is encrypted with AES-GCM using a symmetric key derived from your machine's hardware UUID (`IOPlatformUUID`) plus a static salt. Decryption requires running LingoPop on the same Mac. File permissions are 0600 (owner read/write only).
 - **Settings** (preferred provider, target language, hotkeys, history size limit, etc.) and **translation history** (last N entries) are stored in `UserDefaults` plus, if iCloud Drive sync is enabled in Settings → Main, in `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/settings.json` and `history.json`. The history includes the original text, the translated text, and metadata (timestamp, provider, target language).
 
 ## Data sent to third parties
@@ -14,6 +14,7 @@ When you trigger an operation (translate, fix grammar, rewrite), LingoPop sends 
 - Claude → `api.anthropic.com` (or a custom base URL you configure)
 - OpenAI → `api.openai.com` (or a custom base URL — useful with LiteLLM proxies)
 - Gemini → `generativelanguage.googleapis.com`
+- Grok → `api.x.ai`
 - Google (Free) → `translate.googleapis.com/translate_a/single`
 - Google Translate → `translation.googleapis.com/language/translate/v2`
 

@@ -54,10 +54,10 @@
 - ✓ **Fix grammar** — spelling, punctuation, and grammar only; meaning and style stay the same
 - ✨ **Rewrite** — clearer wording in the same language; meaning and tone preserved
 - 🖼️ **Screen Translate** — press the hotkey, drag a selection over any screen region, and get the recognized text instantly. Press **Translate** in the popup to run AI translation, or just grab the OCR text as-is. Works across multiple monitors
-- ✨ **Magic** — one hotkey that fixes grammar, improves style, and translates in a single AI call. Write your own system prompt in **Settings → Magic**; use `{{targetLanguage}}` as a placeholder. Requires Claude, OpenAI, or Gemini
+- ✨ **Magic** — one hotkey that fixes grammar, improves style, and translates in a single AI call. Write your own system prompt in **Settings → Magic**; use `{{targetLanguage}}` as a placeholder. Requires Claude, OpenAI, Gemini, or Grok
 - ⌨️ Each operation has its own configurable global hotkey. **Translate** ships with **⌥T**; others are unset until you assign them
 - 📋 Popup actions: **Copy**, **Replace** (pastes back into the source app), **Retry with another provider**
-- 🤖 Seven providers: **Claude**, **OpenAI**, **Gemini** (all three operations + vision), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
+- 🤖 Eight providers: **Claude**, **OpenAI**, **Gemini**, **Grok** (all operations + vision), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
 - 🔁 Per-provider fallback — on 429, 5xx, or network errors, retries once with the fallback you pick for that provider
 - 📜 Translation history (0–100 entries, default 10). The three most recent results appear at the top of the menu-bar dropdown for one-click copy
 - ☁️ Settings and history sync via iCloud Drive when available (on by default). API keys stay on each Mac, encrypted with AES-GCM
@@ -106,7 +106,7 @@ After first launch, click the LingoPop icon in the menu bar → **Settings…** 
 
 ### Providers
 
-Sidebar lists all seven providers. The starred one is **active** (used for hotkeys and menu actions).
+Sidebar lists all eight providers. The starred one is **active** (used for hotkeys and menu actions).
 
 Per provider:
 
@@ -117,7 +117,7 @@ Per provider:
 - **Region** — optional, only for **Microsoft Translator** (required for multi-service or regional Azure resources; leave empty for global free-tier F0 resources)
 - **Fallback** — pick another provider to try once on rate-limit, server, or network errors
 
-Configure keys for several providers and switch the active one anytime. **Fix grammar**, **Rewrite**, and **Magic** require Claude, OpenAI, or Gemini — the four translation-only providers are DeepL, Microsoft Translator, Google Translate, and Google (Free).
+Configure keys for several providers and switch the active one anytime. **Fix grammar**, **Rewrite**, and **Magic** require Claude, OpenAI, Gemini, or Grok — the four translation-only providers are DeepL, Microsoft Translator, Google Translate, and Google (Free).
 
 Click **Save** on the detail pane after editing a provider.
 
@@ -127,7 +127,7 @@ Assign a global shortcut per operation: **Translate**, **Fix grammar**, **Rewrit
 
 ### Magic
 
-Write a custom system prompt for the Magic operation. Use `{{targetLanguage}}` as a placeholder — it's replaced at runtime with your configured target language. Click **Save** to apply changes. **Reset to default** restores the built-in prompt. Requires Claude, OpenAI, or Gemini.
+Write a custom system prompt for the Magic operation. Use `{{targetLanguage}}` as a placeholder — it's replaced at runtime with your configured target language. Click **Save** to apply changes. **Reset to default** restores the built-in prompt. Requires Claude, OpenAI, Gemini, or Grok.
 
 ### About
 
@@ -150,6 +150,7 @@ Besides **Settings…** and **History…**:
 | Claude | Translate · Fix grammar · Rewrite · Magic | [console.anthropic.com](https://console.anthropic.com/) |
 | OpenAI | Translate · Fix grammar · Rewrite · Magic | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | Gemini | Translate · Fix grammar · Rewrite · Magic | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| Grok | Translate · Fix grammar · Rewrite · Magic | [console.x.ai](https://console.x.ai/) |
 | DeepL | Translate only | [www.deepl.com/pro-api](https://www.deepl.com/pro-api) — free tier (500k chars/mo) available. Free keys end in `:fx`; change the base URL to `https://api.deepl.com` for paid keys |
 | Microsoft Translator | Translate only | [Azure Cognitive Services](https://portal.azure.com/) — free tier (F0) gives 2M chars/mo |
 | Google Translate | Translate only | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) — enable Cloud Translation API |

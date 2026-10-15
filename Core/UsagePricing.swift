@@ -30,6 +30,26 @@ enum UsagePricing {
         "gemini-3.5-flash-lite":  (0.30,  2.50),
         "gemini-3.1-pro-preview": (2.00,  12.00),
         "gemini-3.1-flash-lite":  (0.25,  1.50),
+        // Claude — 5.x refresh
+        "claude-fable-5-1":       (10.00, 50.00),
+        "claude-opus-5-5":        (4.00,  20.00),
+        "claude-sonnet-5-5":      (2.00,  10.00),
+        "claude-haiku-5-5":       (0.10,  0.50),
+        // OpenAI — GPT-6
+        "gpt-6-astra":            (10.00, 50.00),
+        "gpt-6.1-sol":            (2.00,  10.00),
+        "gpt-6-luna":             (0.10,  0.50),
+        // Gemini — 4 / 3.8
+        "gemini-4-argon":         (2.00,  10.00),
+        "gemini-3.8-flash":       (0.75,  3.75),
+        // Grok
+        "grok-4.7":               (2.00,  6.00),
+        "grok-4.6":               (2.00,  6.00),
+        "grok-4.5":               (2.00,  6.00),
+        "grok-4.3":               (1.25,  2.50),
+        "grok-4.20-0309-reasoning":     (1.25, 2.50),
+        "grok-4.20-0309-non-reasoning": (1.25, 2.50),
+        "grok-build-0.1":         (1.00,  2.00),
     ]
 
     static func estimatedCost(model: String, inputTokens: Int, outputTokens: Int) -> Double? {

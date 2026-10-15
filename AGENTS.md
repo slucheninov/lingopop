@@ -10,11 +10,11 @@ LingoPop is a native macOS menu-bar app (Swift / AppKit + SwiftUI). User selects
 - **Fix grammar** — only grammar / spelling / punctuation, preserving language and style
 - **Rewrite** — improve clarity and style while preserving meaning
 - **Explain** — concise explanation of the text (meaning, context, key nuances) in the target language
-- **Screen Translate** — drag a selection over any screen region; Apple Vision OCR extracts the text first (shown as `.ocr` popup phase with Copy + Translate + Retry buttons); pressing Translate runs the AI translation. OCR text is auto-copied to clipboard on recognition; translation result is also auto-copied. Retry sends the captured image directly to a vision-capable provider (Codex, OpenAI, Gemini) for combined OCR + translation in one step.
+- **Screen Translate** — drag a selection over any screen region; Apple Vision OCR extracts the text first (shown as `.ocr` popup phase with Copy + Translate + Retry buttons); pressing Translate runs the AI translation. OCR text is auto-copied to clipboard on recognition; translation result is also auto-copied. Retry sends the captured image directly to a vision-capable provider (Codex, OpenAI, Gemini, Grok) for combined OCR + translation in one step.
 
 Each operation has its own configurable global hotkey and its own menu-bar item. The popup offers Copy, Replace (paste back into the source app via simulated `Cmd+V`), and Retry-with-other-provider. Replace is hidden for Screen Translate results (can't paste back into an image).
 
-Supported providers: **Codex** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate]`; Codex/OpenAI/Gemini handle all operations. Codex/OpenAI/Gemini also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
+Supported providers: **Codex** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Grok** (xAI, OpenAI-compatible `/v1/chat/completions`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate]`; Codex/OpenAI/Gemini/Grok handle all operations. Codex/OpenAI/Gemini/Grok also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
 
 Requirements: macOS 13.0+, Xcode 15+. The app uses `.accessory` activation policy (no Dock icon, `LSUIElement = YES`), is not sandboxed (needs to post CGEvents and read another app's clipboard via Accessibility, and capture screen content via Screen Recording TCC), and is signed with a self-signed cert.
 
@@ -104,12 +104,12 @@ End-to-end setup is in `RELEASING.md`.
 2. Restore `previousApp` focus and wait 150 ms so any subsequent `simulateCommandC()` goes to the right app (not LingoPop).
 3. `ScreenCapture.capture(rect:)` converts from AppKit coordinates (Y-up, origin at bottom-left) to CG coordinates (Y-down) using `NSScreen.main?.frame.height`, then calls `CGWindowListCreateImage`. Requires Screen Recording TCC permission.
 4. `ScreenOCR.recognize(image:)` runs Apple Vision `VNRecognizeTextRequest` and returns the joined string. If it yields no text, retry providers (vision-capable ones) are offered instead.
-5. Popup shows the `.ocr(text:)` phase: recognized text + Copy / Translate / Retry buttons. OCR text is auto-copied to clipboard. `availableRetryProviders` is set to `visionCapableProviders()` so Retry sends the image directly to Codex/OpenAI/Gemini.
+5. Popup shows the `.ocr(text:)` phase: recognized text + Copy / Translate / Retry buttons. OCR text is auto-copied to clipboard. `availableRetryProviders` is set to `visionCapableProviders()` so Retry sends the image directly to Codex/OpenAI/Gemini/Grok.
 6. When user taps Translate, `translateScreenOCR(_:)` calls `runOperation(.screenTranslate, ...)`. The translation result is auto-copied to clipboard via `present(result:source:viaFallback:)`.
 
 ### Providers
 
-Seven `AIProvider` implementations under `Providers/`, each conforming to:
+Eight `AIProvider` implementations under `Providers/`, each conforming to:
 
 ```swift
 protocol AIProvider {
@@ -118,12 +118,13 @@ protocol AIProvider {
     var availableModels: [String] { get }
     var requiresApiKey: Bool { get }                  // default true
     var supportedOperations: Set<AIOperation> { get } // default: all ops
-    var supportsVision: Bool { get }                  // default false; true for Codex/OpenAI/Gemini
+    var supportsVision: Bool { get }                  // default false; true for Codex/OpenAI/Gemini/Grok
     func execute(text:operation:config:) async throws -> String
 }
 ```
 
 - **ClaudeProvider** (`/v1/messages`), **OpenAIProvider** (`/v1/chat/completions`), **GeminiProvider** (`/v1beta/models/{model}:generateContent`) handle all operations including `.screenTranslate`, and declare `supportsVision = true` — they can receive the captured image directly and do combined OCR + translation in one step.
+- **GrokProvider** (`Providers/GrokProvider.swift`) — xAI, OpenAI-compatible `/v1/chat/completions` at `api.x.ai`. It is not a separate type: `OpenAIProvider` takes `type` / `defaultBaseURL` / `availableModels` as init parameters and `OpenAIProvider.grok` is a preconfigured instance. All operations supported, `supportsVision = true`.
 - **GoogleFreeProvider** uses the unofficial `translate.googleapis.com/translate_a/single` endpoint — no API key, only supports `.translate`.
 - **GoogleCloudProvider** uses the official Cloud Translation v2 API (`?key=...`) — only `.translate`. Supports an optional `Referer` header for keys with HTTP-referrer restriction.
 - **DeepLProvider** and **MicrosoftTranslatorProvider** — translate-only.

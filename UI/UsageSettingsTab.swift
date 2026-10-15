@@ -6,7 +6,7 @@ struct UsageSettingsTab: View {
     @State private var period: UsageStore.Period = .days30
     @State private var showResetConfirm = false
 
-    private let trackedProviders: [ProviderType] = [.claude, .openai, .gemini]
+    private let trackedProviders: [ProviderType] = [.claude, .openai, .gemini, .grok]
 
     var body: some View {
         let t = store.totals(in: period)
@@ -207,6 +207,7 @@ private extension ProviderType {
         case .claude: return "Claude"
         case .openai: return "OpenAI"
         case .gemini: return "Gemini"
+        case .grok: return "Grok"
         case .googleFree: return "Google Free"
         case .googleCloud: return "Google Cloud"
         case .deepl: return "DeepL"
@@ -219,6 +220,7 @@ private extension ProviderType {
         case .claude: return Color(.systemRed)
         case .openai: return Color(.systemGreen)
         case .gemini: return Color(.systemBlue)
+        case .grok: return Color(.systemPurple)
         default: return .secondary
         }
     }

@@ -6,6 +6,7 @@ final class TranslationService {
         .claude: ClaudeProvider(),
         .openai: OpenAIProvider(),
         .gemini: GeminiProvider(),
+        .grok: OpenAIProvider.grok,
         .googleFree: GoogleFreeProvider(),
         .googleCloud: GoogleCloudProvider(),
         .deepl: DeepLProvider(),

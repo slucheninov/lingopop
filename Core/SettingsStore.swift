@@ -310,9 +310,10 @@ final class SettingsStore: ObservableObject {
             fallbacks: nil,
             targetLanguage: "Ukrainian",
             providers: [
-                .claude: .init(baseURL: "https://api.anthropic.com", model: "claude-haiku-4-5"),
-                .openai: .init(baseURL: "https://api.openai.com", model: "gpt-5.4-mini"),
-                .gemini: .init(baseURL: "https://generativelanguage.googleapis.com", model: "gemini-2.5-flash"),
+                .claude: .init(baseURL: "https://api.anthropic.com", model: "claude-haiku-5-5"),
+                .openai: .init(baseURL: "https://api.openai.com", model: "gpt-6-luna"),
+                .gemini: .init(baseURL: "https://generativelanguage.googleapis.com", model: "gemini-3.8-flash"),
+                .grok: .init(baseURL: "https://api.x.ai", model: "grok-4.3"),
                 .googleFree: .init(baseURL: "https://translate.googleapis.com", model: ""),
                 .googleCloud: .init(baseURL: "https://translation.googleapis.com", model: "nmt"),
                 .deepl: .init(baseURL: "https://api-free.deepl.com", model: ""),

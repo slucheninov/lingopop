@@ -5,11 +5,12 @@ struct TokenBarChartView: View {
     let buckets: [UsageStore.Bucket]
     var period: UsageStore.Period = .days30
 
-    private static let providerOrder: [ProviderType] = [.claude, .openai, .gemini]
+    private static let providerOrder: [ProviderType] = [.claude, .openai, .gemini, .grok]
     private static let providerColors: [ProviderType: Color] = [
         .claude: Color(.systemRed),
         .openai: Color(.systemGreen),
-        .gemini: Color(.systemBlue)
+        .gemini: Color(.systemBlue),
+        .grok: Color(.systemPurple)
     ]
 
     private var xAxisLabels: [String] {
@@ -90,6 +91,7 @@ private extension ProviderType {
         case .claude: return "Claude"
         case .openai: return "OpenAI"
         case .gemini: return "Gemini"
+        case .grok: return "Grok"
         default: return rawValue
         }
     }

@@ -5,6 +5,10 @@ struct ClaudeProvider: AIProvider {
     let type: ProviderType = .claude
     let defaultBaseURL = "https://api.anthropic.com"
     let availableModels = [
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
         "claude-fable-5",
         "claude-opus-5",
         "claude-opus-4-8",

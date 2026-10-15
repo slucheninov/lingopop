@@ -62,7 +62,7 @@ enum TranslationError: LocalizedError {
         case .network:
             return "Network error. Check your connection and try again."
         case .operationNotSupported(let provider, let operation):
-            return "\(provider.rawValue) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini) in Settings → Provider."
+            return "\(provider.rawValue) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini / Grok) in Settings → Provider."
         case .invalidConfiguration(let msg):
             return "Invalid configuration: \(msg)"
         case .providerNotFound(let type):
