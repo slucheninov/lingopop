@@ -1,7 +1,14 @@
 import AppKit
+import Carbon.HIToolbox
 
-enum CaptureOverlayError: Error {
+enum CaptureOverlayError: LocalizedError {
     case cancelled
+
+    var errorDescription: String? {
+        switch self {
+        case .cancelled: return "Screen selection was cancelled."
+        }
+    }
 }
 
 final class CaptureOverlayWindow: NSPanel {
@@ -39,12 +46,13 @@ final class CaptureOverlayWindow: NSPanel {
     /// Creates one overlay per screen, tracks mouse via a local event monitor so events
     /// are always captured regardless of monitor configuration or backing scale differences.
     /// Returns the selection in global AppKit screen coordinates.
+    @MainActor
     static func runSelection() async throws -> CGRect {
         let windows = NSScreen.screens.map { CaptureOverlayWindow(screen: $0) }
 
-        // Captured by both the continuation block and the cancellation handler.
         var monitor: Any?
         var continuation: CheckedContinuation<CGRect, Error>?
+        var finished = false
 
         func teardown() {
             if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
@@ -52,21 +60,24 @@ final class CaptureOverlayWindow: NSPanel {
             NSCursor.arrow.set()
         }
 
+        /// Single place that resumes the continuation; safe to call repeatedly.
+        func resumeOnce(_ result: Result<CGRect, Error>) {
+            // No stored continuation yet (cancellation raced ahead of setup): the post-setup
+            // `Task.isCancelled` check below will call us again once it exists.
+            guard !finished, let cont = continuation else { return }
+            finished = true
+            continuation = nil
+            teardown()
+            cont.resume(with: result)
+        }
+
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { cont in
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CGRect, Error>) in
                 continuation = cont
                 var startPoint: NSPoint?
                 var selectionRect: CGRect?
-                var finished = false
 
-                func finish(_ result: Result<CGRect, Error>) {
-                    guard !finished else { return }
-                    finished = true
-                    teardown()
-                    cont.resume(with: result)
-                }
-
-                func updateDrawing() {
+                @MainActor func updateDrawing() {
                     for w in windows {
                         w.drawingView.selectionScreenRect = selectionRect
                         w.drawingView.screenOrigin = w.ownScreen.frame.origin
@@ -96,14 +107,14 @@ final class CaptureOverlayWindow: NSPanel {
 
                     case .leftMouseUp:
                         if let rect = selectionRect, rect.width >= 10, rect.height >= 10 {
-                            finish(.success(rect))
+                            resumeOnce(.success(rect))
                         } else {
-                            finish(.failure(CaptureOverlayError.cancelled))
+                            resumeOnce(.failure(CaptureOverlayError.cancelled))
                         }
                         return nil
 
-                    case .keyDown where event.keyCode == 53:
-                        finish(.failure(CaptureOverlayError.cancelled))
+                    case .keyDown where event.keyCode == UInt16(kVK_Escape):
+                        resumeOnce(.failure(CaptureOverlayError.cancelled))
                         return nil
 
                     default: break
@@ -116,12 +127,15 @@ final class CaptureOverlayWindow: NSPanel {
                 for w in windows {
                     w.makeKeyAndOrderFront(nil)
                 }
+
+                // A task cancelled before the continuation was stored never ran `onCancel` against it.
+                if Task.isCancelled {
+                    resumeOnce(.failure(CancellationError()))
+                }
             }
         } onCancel: {
             Task { @MainActor in
-                teardown()
-                continuation?.resume(throwing: CancellationError())
-                continuation = nil
+                resumeOnce(.failure(CancellationError()))
             }
         }
     }

@@ -35,7 +35,8 @@ final class TranslationService {
             translated: providerResult.text,
             targetLanguage: config.targetLanguage,
             provider: config.providerType,
-            operation: operation
+            operation: operation,
+            truncated: providerResult.truncated
         )
     }
 

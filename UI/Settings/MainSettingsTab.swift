@@ -5,7 +5,7 @@ struct MainSettingsTab: View {
     @ObservedObject var store: SettingsStore
     @State private var accessibilityGranted: Bool = PermissionsManager.isAccessibilityGranted()
     @State private var screenRecordingGranted: Bool = PermissionsManager.isScreenRecordingGranted()
-    @AppStorage("LingoPop.popupFontSize") private var popupFontSize: Double = 13
+    @AppStorage(PopupPrefs.fontSizeKey) private var popupFontSize: Double = PopupPrefs.defaultFontSize
 
     var body: some View {
         Form {

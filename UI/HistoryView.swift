@@ -6,9 +6,13 @@ struct HistoryView: View {
     @ObservedObject var store: TranslationHistoryStore
     @State private var query: String = ""
 
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var filtered: [TranslationHistoryEntry] {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return store.entries }
-        let q = query.lowercased()
+        guard !trimmedQuery.isEmpty else { return store.entries }
+        let q = trimmedQuery.lowercased()
         return store.entries.filter {
             $0.original.lowercased().contains(q) || $0.translated.lowercased().contains(q)
         }
@@ -45,6 +49,10 @@ struct HistoryView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if filtered.isEmpty {
+                Text("No matches for “\(trimmedQuery)”.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     ForEach(filtered) { entry in

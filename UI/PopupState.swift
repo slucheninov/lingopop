@@ -38,6 +38,7 @@ final class PopupState: ObservableObject {
     var onTranslate: ((String, ProviderType) -> Void)?
 
     func setLoading(operation: AIOperation, original: String) {
+        availableRetryProviders = []
         phase = .loading(operation: operation, originalPreview: String(original.prefix(120)))
     }
 
@@ -50,6 +51,7 @@ final class PopupState: ObservableObject {
     }
 
     func setError(_ error: PopupError) {
+        availableRetryProviders = []
         phase = .error(error)
     }
 

@@ -22,6 +22,7 @@ struct TranslationResult {
     let operation: AIOperation
     var viaFallback: Bool = false
     var fallbackInfo: FallbackInfo? = nil
+    var truncated: Bool = false
 }
 
 struct FallbackInfo {
@@ -50,7 +51,7 @@ enum TranslationError: LocalizedError {
     var userSummary: String {
         switch self {
         case .missingApiKey:
-            return "API key is not set. Open Settings → Provider and add one."
+            return "API key is not set. Open Settings → Providers and add one."
         case .invalidURL:
             return "Invalid base URL."
         case .http(let status, _, _):
@@ -62,7 +63,7 @@ enum TranslationError: LocalizedError {
         case .network:
             return "Network error. Check your connection and try again."
         case .operationNotSupported(let provider, let operation):
-            return "\(provider.rawValue) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini / Grok) in Settings → Provider."
+            return "\(provider.rawValue) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini / Grok) in Settings → Providers."
         case .invalidConfiguration(let msg):
             return "Invalid configuration: \(msg)"
         case .providerNotFound(let type):
@@ -94,7 +95,7 @@ enum TranslationError: LocalizedError {
 
     private static func hint(forStatus status: Int) -> String? {
         switch status {
-        case 401, 403: return "Check the API key in Settings → Provider."
+        case 401, 403: return "Check the API key in Settings → Providers."
         case 404: return "Endpoint not found. Verify Base URL and Model in Settings."
         case 429: return "Rate limit exceeded. Wait a moment and retry."
         case 500...599: return "Server error from your endpoint. If you use a proxy (LiteLLM), check the model name is configured there."

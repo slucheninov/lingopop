@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import SwiftUI
 
@@ -21,6 +22,14 @@ final class PopupWindow {
         if isNewlyVisible {
             position(panel, near: point)
             panel.alphaValue = 0
+        } else {
+            // Re-shown while a close fade is in flight (or already visible):
+            // cancel the animation and make sure the panel is fully opaque.
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0
+                panel.animator().alphaValue = 1
+            }
+            panel.alphaValue = 1
         }
         panel.orderFrontRegardless()
         installEventMonitors()
@@ -43,10 +52,12 @@ final class PopupWindow {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            guard self?.isClosing == true else { return }
-            panel.orderOut(nil)
-            panel.alphaValue = 1
-            self?.isClosing = false
+            DispatchQueue.main.async {
+                guard self?.isClosing == true else { return }
+                panel.orderOut(nil)
+                panel.alphaValue = 1
+                self?.isClosing = false
+            }
         })
     }
 
@@ -82,7 +93,7 @@ final class PopupWindow {
 
         phaseCancellable = state.$phase
             .dropFirst()
-            .receive(on: DispatchQueue.main)
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.resizeToFit()
             }
@@ -134,7 +145,7 @@ final class PopupWindow {
         }
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 {
+            if event.keyCode == UInt16(kVK_Escape) {
                 self?.close()
                 return nil
             }

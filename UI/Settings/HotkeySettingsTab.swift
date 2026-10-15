@@ -36,12 +36,10 @@ private struct OperationHotkeyRow: View {
         HStack(spacing: 8) {
             HotkeyRecorderField(config: Binding(
                 get: { store.hotkey(for: operation) ?? .empty },
+                // The recorder only emits real key combos (keyCode 0 is "A", a valid key),
+                // so never treat a recorded config as "empty". Clearing uses the ✕ button.
                 set: { newValue in
-                    if newValue.isEmpty {
-                        store.setHotkey(nil, for: operation)
-                    } else {
-                        store.setHotkey(newValue, for: operation)
-                    }
+                    store.setHotkey(newValue, for: operation)
                 }
             ))
             if store.hotkey(for: operation) != nil {

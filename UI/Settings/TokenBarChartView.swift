@@ -5,13 +5,7 @@ struct TokenBarChartView: View {
     let buckets: [UsageStore.Bucket]
     var period: UsageStore.Period = .days30
 
-    private static let providerOrder: [ProviderType] = [.claude, .openai, .gemini, .grok]
-    private static let providerColors: [ProviderType: Color] = [
-        .claude: Color(.systemRed),
-        .openai: Color(.systemGreen),
-        .gemini: Color(.systemBlue),
-        .grok: Color(.systemPurple)
-    ]
+    private static let providerOrder = UsageFormatting.trackedProviders
 
     private var xAxisLabels: [String] {
         switch period {
@@ -48,7 +42,7 @@ struct TokenBarChartView: View {
                         let total = tokens.input + tokens.output
                         guard total > 0 else { continue }
                         let barH = CGFloat(total) / CGFloat(maxTokens) * size.height
-                        let color = Self.providerColors[provider] ?? .secondary
+                        let color = provider.usageColor
                         let rect = CGRect(x: x, y: yOffset - barH, width: max(barWidth, 1), height: barH)
                         ctx.fill(Path(roundedRect: rect, cornerRadius: 2), with: .color(color))
                         yOffset -= barH
@@ -73,26 +67,14 @@ struct TokenBarChartView: View {
                 ForEach(Self.providerOrder, id: \.self) { provider in
                     HStack(spacing: 4) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(Self.providerColors[provider] ?? .secondary)
+                            .fill(provider.usageColor)
                             .frame(width: 10, height: 10)
-                        Text(provider.chartLabel)
+                        Text(provider.usageDisplayName)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-        }
-    }
-}
-
-private extension ProviderType {
-    var chartLabel: String {
-        switch self {
-        case .claude: return "Claude"
-        case .openai: return "OpenAI"
-        case .gemini: return "Gemini"
-        case .grok: return "Grok"
-        default: return rawValue
         }
     }
 }

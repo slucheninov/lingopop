@@ -23,14 +23,10 @@ enum PermissionsManager {
         CGPreflightScreenCaptureAccess()
     }
 
-    /// Triggers the system TCC prompt on macOS 15+. Returns true if access was granted.
-    /// On macOS 13/14 the system prompt fires automatically on the first CGWindowListCreateImage call.
+    /// Triggers the system Screen Recording TCC prompt (if not yet decided). Returns true if access is granted.
     @discardableResult
     static func requestScreenCaptureAccess() -> Bool {
-        if #available(macOS 15.0, *) {
-            return CGRequestScreenCaptureAccess()
-        }
-        return CGPreflightScreenCaptureAccess()
+        CGRequestScreenCaptureAccess()
     }
 
     static func openScreenRecordingSettings() {

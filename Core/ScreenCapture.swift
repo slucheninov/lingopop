@@ -1,9 +1,18 @@
 import AppKit
 import CoreGraphics
 
-enum ScreenCaptureError: Error {
+enum ScreenCaptureError: LocalizedError {
     case tooSmall
     case captureFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .tooSmall:
+            return "The selected area is too small. Select at least 10x10 pixels."
+        case .captureFailed:
+            return "Could not capture the screen. Check that Screen Recording permission is granted."
+        }
+    }
 }
 
 enum ScreenCapture {

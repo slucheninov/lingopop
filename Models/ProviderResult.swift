@@ -8,4 +8,5 @@ struct TokenUsage {
 struct ProviderResult {
     let text: String
     let usage: TokenUsage?
+    var truncated: Bool = false
 }

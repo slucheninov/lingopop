@@ -28,65 +28,117 @@ enum SecretStorage {
     private static var fileURL: URL { folderURL.appendingPathComponent("secrets.dat") }
     private static var machineKeyURL: URL { folderURL.appendingPathComponent("machine.key") }
 
+    private enum SecretStorageError: Error {
+        case randomGenerationFailed
+        case saltPersistFailed
+        case writeFailed
+        case invalidSalt
+    }
+
+    // Derived key is cached after first derivation (guarded by `lock`).
+    private static let lock = NSLock()
+    private static var cachedKey: SymmetricKey?
+    // True when machineIdentifier() had to generate a brand-new machine.key
+    // (IOPlatformUUID unavailable); an existing secrets.dat can't match it.
+    private static var machineKeyWasFreshlyGenerated = false
+
     // H-1: HKDF-derived key using a persisted random salt (secrets.salt).
-    private static var symmetricKey: SymmetricKey {
-        let saltData = loadOrCreateSalt()
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: Data(machineIdentifier().utf8)),
+    private static func symmetricKey() throws -> SymmetricKey {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cachedKey { return cachedKey }
+        let saltData = try loadOrCreateSalt()
+        let machine = try machineIdentifier()
+        machineKeyWasFreshlyGenerated = machine.freshlyGenerated
+        let key = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: Data(machine.id.utf8)),
             salt: saltData,
             info: Data("LingoPop.v1.secrets".utf8),
             outputByteCount: 32
         )
+        cachedKey = key
+        return key
     }
 
-    private static func loadOrCreateSalt() -> Data {
+    /// Key scheme used before commit 1a04977: SHA256(IOPlatformUUID + "|" + salt string).
+    private static func legacySymmetricKey() -> SymmetricKey {
+        var uuid = "fallback-machine-id"
+        let entry = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        if entry != 0 {
+            defer { IOObjectRelease(entry) }
+            if let value = IORegistryEntryCreateCFProperty(entry, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String {
+                uuid = value
+            }
+        }
+        let digest = SHA256.hash(data: Data((uuid + "|" + "LingoPop.v1.secrets").utf8))
+        return SymmetricKey(data: digest)
+    }
+
+    /// Writes `data` to `url` via a 0600 temp file and an atomic rename(2).
+    private static func writeAtomically(_ data: Data, to url: URL) throws {
+        let tmpURL = url.appendingPathExtension("tmp")
+        let fm = FileManager.default
+        try? fm.removeItem(at: tmpURL)
+        guard fm.createFile(atPath: tmpURL.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+            throw SecretStorageError.writeFailed
+        }
+        if rename(tmpURL.path, url.path) != 0 {
+            try? fm.removeItem(at: tmpURL)
+            throw SecretStorageError.writeFailed
+        }
+    }
+
+    private static func loadOrCreateSalt() throws -> Data {
         let saltURL = folderURL.appendingPathComponent("secrets.salt")
-        if let existing = try? Data(contentsOf: saltURL), existing.count == 32 {
-            return existing
+        if let existing = try? Data(contentsOf: saltURL) {
+            if existing.count == 32 { return existing }
+            // Corrupt salt: regenerating would make an existing secrets.dat undecryptable.
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                log.error("secrets.salt has unexpected size \(existing.count) while secrets.dat exists; refusing to regenerate")
+                throw SecretStorageError.invalidSalt
+            }
         }
         var randomBytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes) == errSecSuccess else {
-            log.error("SecRandomCopyBytes failed for HKDF salt; key will be unstable")
-            return Data(SHA256.hash(data: Data(UUID().uuidString.utf8)))
+            log.error("SecRandomCopyBytes failed for HKDF salt")
+            throw SecretStorageError.randomGenerationFailed
         }
         let saltData = Data(randomBytes)
-        let tmpURL = folderURL.appendingPathComponent("secrets.salt.tmp")
         do {
-            try saltData.write(to: tmpURL)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmpURL.path)
-            try FileManager.default.moveItem(at: tmpURL, to: saltURL)
+            try writeAtomically(saltData, to: saltURL)
         } catch {
             log.error("Failed to persist secrets.salt: \(error.localizedDescription, privacy: .public)")
+            throw SecretStorageError.saltPersistFailed
         }
         return saltData
     }
 
-    private static func machineIdentifier() -> String {
+    private static func machineIdentifier() throws -> (id: String, freshlyGenerated: Bool) {
         let entry = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
         if entry != 0 {
             defer { IOObjectRelease(entry) }
             if let uuid = IORegistryEntryCreateCFProperty(entry, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String {
-                return uuid
+                return (uuid, false)
             }
         }
-        // IOKit unavailable — use (or generate) a persisted random machine secret.
+        // IOKit unavailable: use (or generate) a persisted random machine secret.
         let keyURL = machineKeyURL
         if let existing = try? Data(contentsOf: keyURL), !existing.isEmpty {
-            return existing.base64EncodedString()
+            return (existing.base64EncodedString(), false)
         }
         var randomBytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes) == errSecSuccess else {
-            log.error("SecRandomCopyBytes failed; machine identifier will be unstable")
-            return UUID().uuidString
+            log.error("SecRandomCopyBytes failed for machine identifier")
+            throw SecretStorageError.randomGenerationFailed
         }
         let keyData = Data(randomBytes)
         do {
-            try keyData.write(to: keyURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+            try writeAtomically(keyData, to: keyURL)
         } catch {
             log.error("Failed to persist machine.key: \(error.localizedDescription, privacy: .public)")
+            throw SecretStorageError.saltPersistFailed
         }
-        return keyData.base64EncodedString()
+        return (keyData.base64EncodedString(), true)
     }
 
     static func get(_ key: String) -> String? {
@@ -143,35 +195,74 @@ enum SecretStorage {
             log.error("Failed to read secrets.dat: \(error.localizedDescription, privacy: .public)")
             return .unavailable
         }
+        // Smaller than nonce (12) + tag (16): not a sealed box, nothing to recover.
+        guard data.count >= 28 else {
+            log.error("secrets.dat is too short (\(data.count) bytes); treating as empty")
+            return .available([:])
+        }
+        let key: SymmetricKey
+        do {
+            key = try symmetricKey()
+        } catch {
+            log.error("Failed to derive secrets key: \(error.localizedDescription, privacy: .public)")
+            return .unavailable
+        }
+        if let store = decrypt(data, using: key) {
+            return .available(store)
+        }
+        // Legacy migration: files written before the HKDF/salt scheme.
+        if let store = decrypt(data, using: legacySymmetricKey()) {
+            log.info("Migrating secrets.dat from legacy key scheme")
+            if !saveAll(store) {
+                log.error("Failed to re-save migrated secrets.dat")
+            }
+            return .available(store)
+        }
+        // A freshly generated machine.key can never match an existing file; don't destroy it.
+        lock.lock()
+        let freshKey = machineKeyWasFreshlyGenerated
+        lock.unlock()
+        if freshKey {
+            log.error("secrets.dat can't be decrypted: machine identifier unavailable (fresh fallback key)")
+            return .unavailable
+        }
+        // Neither scheme works: move the file aside so the user can re-enter keys.
+        quarantineUnreadableFile(at: url)
+        return .available([:])
+    }
+
+    private static func decrypt(_ data: Data, using key: SymmetricKey) -> [String: String]? {
         do {
             let box = try AES.GCM.SealedBox(combined: data)
-            let plaintext = try AES.GCM.open(box, using: symmetricKey)
-            return .available(try JSONDecoder().decode([String: String].self, from: plaintext))
+            let plaintext = try AES.GCM.open(box, using: key)
+            return try JSONDecoder().decode([String: String].self, from: plaintext)
         } catch {
-            log.error("Failed to decrypt or decode secrets.dat: \(error.localizedDescription, privacy: .public)")
-            return .unavailable
+            return nil
+        }
+    }
+
+    private static func quarantineUnreadableFile(at url: URL) {
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backup = url.deletingLastPathComponent().appendingPathComponent("secrets.dat.bak-\(stamp)")
+        do {
+            try FileManager.default.moveItem(at: url, to: backup)
+            log.error("secrets.dat could not be decrypted; moved to \(backup.lastPathComponent, privacy: .public)")
+        } catch {
+            log.error("Failed to move undecryptable secrets.dat aside: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        let defaults = UserDefaults.standard
+        for name in defaults.dictionaryRepresentation().keys where name.hasPrefix(flagPrefix) {
+            defaults.removeObject(forKey: name)
         }
     }
 
     private static func saveAll(_ store: [String: String]) -> Bool {
         do {
             let plaintext = try JSONEncoder().encode(store)
-            let sealed = try AES.GCM.seal(plaintext, using: symmetricKey)
+            let sealed = try AES.GCM.seal(plaintext, using: try symmetricKey())
             guard let combined = sealed.combined else { return false }
-            // H-2: write → chmod → rename, eliminating the open-permissions window.
-            let finalURL = fileURL
-            let tmpURL = folderURL.appendingPathComponent("secrets.dat.tmp")
-            let fm = FileManager.default
-            try combined.write(to: tmpURL)
-            do {
-                try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tmpURL.path)
-            } catch {
-                log.error("Failed to set 0600 on secrets.dat.tmp: \(error.localizedDescription, privacy: .public)")
-            }
-            if fm.fileExists(atPath: finalURL.path) {
-                try fm.removeItem(at: finalURL)
-            }
-            try fm.moveItem(at: tmpURL, to: finalURL)
+            try writeAtomically(combined, to: fileURL)
             return true
         } catch {
             log.error("Encrypt failed: \(error.localizedDescription, privacy: .public)")

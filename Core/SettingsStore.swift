@@ -53,6 +53,9 @@ final class SettingsStore: ObservableObject {
     @Published var autoCopyOCR: Bool
     @Published var magicPrompt: String
     @Published var apiKeySaveError: String? = nil
+    /// Bumped whenever an API key is set or cleared so views can refresh "Key set" indicators.
+    /// Intentionally not persisted and not part of auto-save.
+    @Published private(set) var secretsRevision: Int = 0
 
     private var saveSubscription: AnyCancellable?
     private var pollTimer: Timer?
@@ -84,12 +87,7 @@ final class SettingsStore: ObservableObject {
             }
             self.hotkeys = migrated
         } else {
-            var initial: [AIOperation: HotkeyConfig] = [
-                .translate: loaded.persisted.hotkey ?? .default
-            ]
-            initial[.grammarFix] = nil
-            initial[.rewrite] = nil
-            self.hotkeys = initial
+            self.hotkeys = [.translate: loaded.persisted.hotkey ?? .default]
         }
         self.launchAtLogin = loaded.persisted.launchAtLogin ?? false
         self.maxInputChars = loaded.persisted.maxInputChars ?? 5000
@@ -251,6 +249,7 @@ final class SettingsStore: ObservableObject {
     func setApiKey(_ key: String, for provider: ProviderType) {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         let storageKey = keychainKey(for: provider)
+        defer { secretsRevision += 1 }
         if trimmed.isEmpty {
             KeychainService.delete(storageKey)
             apiKeySaveError = nil
@@ -261,10 +260,6 @@ final class SettingsStore: ObservableObject {
                 apiKeySaveError = "Failed to save API key. Please try again."
             }
         }
-    }
-
-    func activeConfig(overrideTargetLanguage: String? = nil) -> ProviderConfig {
-        config(for: activeProvider, overrideTargetLanguage: overrideTargetLanguage)
     }
 
     func config(for provider: ProviderType, overrideTargetLanguage: String? = nil) -> ProviderConfig {
@@ -304,20 +299,30 @@ final class SettingsStore: ObservableObject {
         return try? JSONDecoder().decode(Persisted.self, from: data)
     }
 
+    /// Default per-provider settings derived from the provider implementations (single source of truth).
+    /// `preferredModel` is used only if the provider actually lists it.
+    private static func defaultSettings(_ provider: AIProvider, preferredModel: String? = nil, useDefaultBaseURL: Bool = true) -> ProviderSettings {
+        let model = preferredModel.flatMap { provider.availableModels.contains($0) ? $0 : nil }
+            ?? provider.availableModels.first
+            ?? ""
+        return ProviderSettings(baseURL: useDefaultBaseURL ? provider.defaultBaseURL : "", model: model)
+    }
+
     private static func makeDefault() -> Persisted {
         Persisted(
             activeProvider: .claude,
             fallbacks: nil,
             targetLanguage: "Ukrainian",
             providers: [
-                .claude: .init(baseURL: "https://api.anthropic.com", model: "claude-haiku-5-5"),
-                .openai: .init(baseURL: "https://api.openai.com", model: "gpt-6-luna"),
-                .gemini: .init(baseURL: "https://generativelanguage.googleapis.com", model: "gemini-3.8-flash"),
-                .grok: .init(baseURL: "https://api.x.ai", model: "grok-4.3"),
-                .googleFree: .init(baseURL: "https://translate.googleapis.com", model: ""),
-                .googleCloud: .init(baseURL: "https://translation.googleapis.com", model: "nmt"),
-                .deepl: .init(baseURL: "https://api-free.deepl.com", model: ""),
-                .microsoftTranslator: .init(baseURL: "https://api.cognitive.microsofttranslator.com", model: "")
+                .claude: defaultSettings(ClaudeProvider(), preferredModel: "claude-haiku-5-5"),
+                .openai: defaultSettings(OpenAIProvider(), preferredModel: "gpt-6-luna"),
+                .gemini: defaultSettings(GeminiProvider(), preferredModel: "gemini-3.8-flash"),
+                .grok: defaultSettings(OpenAIProvider.grok, preferredModel: "grok-4.3"),
+                .googleFree: defaultSettings(GoogleFreeProvider()),
+                .googleCloud: defaultSettings(GoogleCloudProvider()),
+                // Empty base URL lets DeepLProvider pick free/pro by the ":fx" key suffix.
+                .deepl: defaultSettings(DeepLProvider(), useDefaultBaseURL: false),
+                .microsoftTranslator: defaultSettings(MicrosoftTranslatorProvider())
             ],
             hotkey: nil,
             launchAtLogin: nil,

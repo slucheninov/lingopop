@@ -6,7 +6,7 @@ struct PopupView: View {
     @ObservedObject var state: PopupState
     var onClose: () -> Void
 
-    @AppStorage("LingoPop.popupFontSize") private var popupFontSize: Double = 13
+    @AppStorage(PopupPrefs.fontSizeKey) private var popupFontSize: Double = PopupPrefs.defaultFontSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -40,236 +40,13 @@ struct PopupView: View {
     private var content: some View {
         switch state.phase {
         case .loading(let operation, let preview):
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("\(operation.displayName)…")
-                    .font(.system(size: 13, weight: .medium))
-                Spacer(minLength: 0)
-            }
-            if !preview.isEmpty {
-                Text(preview)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
+            LoadingContent(operation: operation, preview: preview)
         case .ocr(let text):
-            HStack(spacing: 4) {
-                Image(systemName: "text.viewfinder")
-                    .font(.system(size: headerFontSize, weight: .semibold))
-                Text("Recognized text")
-                    .font(.system(size: headerFontSize, weight: .semibold))
-            }
-            .foregroundStyle(.secondary)
-            Text(text)
-                .font(.system(size: CGFloat(popupFontSize)))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 8)
-            HStack(spacing: 8) {
-                Button(action: { copy(text) }) {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .popupButtonHelp("Copy")
-                HStack(spacing: 4) {
-                    Button(action: {
-                        let provider = state.activeTranslateProvider ?? state.availableTranslateProviders.first
-                        guard let provider else { return }
-                        state.onTranslate?(text, provider)
-                    }) {
-                        Label("Translate", systemImage: "globe")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .popupButtonHelp("Translate with active provider")
-
-                    if !state.availableTranslateProviders.isEmpty {
-                        Menu {
-                            ForEach(state.availableTranslateProviders, id: \.self) { provider in
-                                Button {
-                                    state.onTranslate?(text, provider)
-                                } label: {
-                                    HStack {
-                                        Label(provider.rawValue, systemImage: provider.sfSymbol)
-                                        if provider == state.activeTranslateProvider {
-                                            Spacer(minLength: 8)
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
-                                .frame(minWidth: 14, minHeight: 14)
-                        }
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .popupButtonHelp("Translate with…")
-                    }
-                }
-                Spacer(minLength: 0)
-                if !state.availableRetryProviders.isEmpty {
-                    Menu {
-                        ForEach(state.availableRetryProviders, id: \.self) { provider in
-                            Button {
-                                state.onRetry?(provider)
-                            } label: {
-                                Label("Retry with \(provider.rawValue)", systemImage: provider.sfSymbol)
-                            }
-                        }
-                    } label: {
-                        Label("Retry", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .menuIndicator(.visible)
-                    .fixedSize()
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
+            OCRContent(state: state, text: text, fontSize: popupFontSize)
         case .result(let result):
-            HStack(spacing: 6) {
-                HStack(spacing: 4) {
-                    Image(systemName: result.provider.sfSymbol)
-                        .font(.system(size: headerFontSize, weight: .semibold))
-                        .foregroundStyle(result.provider.iconColor)
-                    if result.operation == .translate {
-                        Text("\(result.provider.rawValue) →")
-                            .font(.system(size: headerFontSize, weight: .semibold))
-                        Menu {
-                            ForEach(languageOptions(current: result.targetLanguage), id: \.self) { lang in
-                                Button {
-                                    state.onRetranslate?(lang)
-                                } label: {
-                                    if lang == result.targetLanguage {
-                                        Label(lang, systemImage: "checkmark")
-                                    } else {
-                                        Text(lang)
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 2) {
-                                Text(result.targetLanguage)
-                                    .font(.system(size: headerFontSize, weight: .semibold))
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: max(6, headerFontSize - 2), weight: .semibold))
-                            }
-                        }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                    } else {
-                        Text(result.provider.rawValue)
-                            .font(.system(size: headerFontSize, weight: .semibold))
-                    }
-                }
-                .foregroundStyle(.secondary)
-                if result.viaFallback {
-                    Text("fallback")
-                        .font(.system(size: max(7, headerFontSize - 1), weight: .semibold))
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Capsule().fill(Color.orange.opacity(0.2)))
-                        .foregroundStyle(.orange)
-                }
-            }
-            if let fallback = result.fallbackInfo {
-                DisclosureGroup("Why fallback was used") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(fallback.primaryProvider.rawValue): \(fallback.message)")
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let details = fallback.details {
-                            Text(details)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-                .font(.system(size: 11))
-                .tint(.orange)
-            }
-            Text(result.translated)
-                .font(.system(size: CGFloat(popupFontSize)))
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.vertical, 8)
-            HStack(spacing: 8) {
-                Button(action: { copy(result.translated) }) {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .popupButtonHelp("Copy")
-                if result.operation != .screenTranslate {
-                    Button(action: { state.onReplace?(result.translated) }) {
-                        Label("Replace", systemImage: "arrow.uturn.left")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .popupButtonHelp("Replace")
-                }
-                Button(action: { state.onRewrite?(result.translated) }) {
-                    Label("Rewrite", systemImage: "wand.and.stars")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .popupButtonHelp("Rewrite")
-                if result.operation != .explain {
-                    Button(action: { state.onExplain?(result.translated) }) {
-                        Label("Explain", systemImage: "text.magnifyingglass")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .popupButtonHelp("Explain")
-                }
-                Spacer(minLength: 0)
-                if !state.availableRetryProviders.isEmpty {
-                    Menu {
-                        ForEach(state.availableRetryProviders, id: \.self) { provider in
-                            Button {
-                                state.onRetry?(provider)
-                            } label: {
-                                Label("Retry with \(provider.rawValue)", systemImage: provider.sfSymbol)
-                            }
-                        }
-                    } label: {
-                        Label("Retry", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .menuIndicator(.visible)
-                    .fixedSize()
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
+            ResultContent(state: state, result: result, fontSize: popupFontSize)
         case .error(let error):
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                Text("Error")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.red)
-            }
-            Text(error.message)
-                .font(.system(size: 12))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let details = error.details {
-                DisclosureGroup("Details") {
-                    Text(details)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .font(.system(size: 11))
-                .tint(.accentColor)
-            }
+            ErrorContent(state: state, error: error)
         }
     }
 
@@ -287,10 +64,190 @@ struct PopupView: View {
         let fontFactor = CGFloat(popupFontSize) / 13.0
         return min(700, max(minW, 200 + chars * fontFactor))
     }
+}
 
-    private func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+private func copyToPasteboard(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+}
+
+private func headerFontSize(for fontSize: Double) -> CGFloat {
+    max(8, CGFloat(fontSize) - 2)
+}
+
+// MARK: - Loading
+
+private struct LoadingContent: View {
+    let operation: AIOperation
+    let preview: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            Text("\(operation.displayName)…")
+                .font(.system(size: 13, weight: .medium))
+            Spacer(minLength: 0)
+        }
+        if !preview.isEmpty {
+            Text(preview)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+    }
+}
+
+// MARK: - OCR
+
+private struct OCRContent: View {
+    @ObservedObject var state: PopupState
+    let text: String
+    let fontSize: Double
+
+    var body: some View {
+        let header = headerFontSize(for: fontSize)
+        HStack(spacing: 4) {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: header, weight: .semibold))
+            Text("Recognized text")
+                .font(.system(size: header, weight: .semibold))
+        }
+        .foregroundStyle(.secondary)
+        Text(text)
+            .font(.system(size: CGFloat(fontSize)))
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 8)
+        HStack(spacing: 8) {
+            PopupActionButton(title: "Copy", systemImage: "doc.on.doc") { copyToPasteboard(text) }
+            translateControls
+            Spacer(minLength: 0)
+            RetryMenu(state: state)
+        }
+    }
+
+    private var translateControls: some View {
+        HStack(spacing: 4) {
+            Button(action: {
+                let provider = state.activeTranslateProvider ?? state.availableTranslateProviders.first
+                guard let provider else { return }
+                state.onTranslate?(text, provider)
+            }) {
+                Label("Translate", systemImage: "globe")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .popupButtonHelp("Translate with active provider")
+
+            if !state.availableTranslateProviders.isEmpty {
+                Menu {
+                    ForEach(state.availableTranslateProviders, id: \.self) { provider in
+                        Button {
+                            state.onTranslate?(text, provider)
+                        } label: {
+                            HStack {
+                                Label(provider.rawValue, systemImage: provider.sfSymbol)
+                                if provider == state.activeTranslateProvider {
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(minWidth: 14, minHeight: 14)
+                }
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .popupButtonHelp("Translate with…")
+            }
+        }
+    }
+}
+
+// MARK: - Result
+
+private struct ResultContent: View {
+    @ObservedObject var state: PopupState
+    let result: TranslationResult
+    let fontSize: Double
+
+    var body: some View {
+        ResultHeader(state: state, result: result, fontSize: fontSize)
+        if let fallback = result.fallbackInfo {
+            FallbackDisclosure(fallback: fallback)
+        }
+        Text(result.translated)
+            .font(.system(size: CGFloat(fontSize)))
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 8)
+        if result.truncated {
+            Label("Response was truncated", systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.orange)
+        }
+        ResultActionBar(state: state, result: result)
+    }
+}
+
+private struct ResultHeader: View {
+    @ObservedObject var state: PopupState
+    let result: TranslationResult
+    let fontSize: Double
+
+    var body: some View {
+        let header = headerFontSize(for: fontSize)
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: result.provider.sfSymbol)
+                    .font(.system(size: header, weight: .semibold))
+                    .foregroundStyle(result.provider.iconColor)
+                if result.operation == .translate {
+                    Text("\(result.provider.rawValue) →")
+                        .font(.system(size: header, weight: .semibold))
+                    Menu {
+                        ForEach(languageOptions(current: result.targetLanguage), id: \.self) { lang in
+                            Button {
+                                state.onRetranslate?(lang)
+                            } label: {
+                                if lang == result.targetLanguage {
+                                    Label(lang, systemImage: "checkmark")
+                                } else {
+                                    Text(lang)
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(result.targetLanguage)
+                                .font(.system(size: header, weight: .semibold))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: max(6, header - 2), weight: .semibold))
+                        }
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                } else {
+                    Text(result.provider.rawValue)
+                        .font(.system(size: header, weight: .semibold))
+                }
+            }
+            .foregroundStyle(.secondary)
+            if result.viaFallback {
+                Text("fallback")
+                    .font(.system(size: max(7, header - 1), weight: .semibold))
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.orange.opacity(0.2)))
+                    .foregroundStyle(.orange)
+            }
+        }
     }
 
     private func languageOptions(current: String) -> [String] {
@@ -302,71 +259,88 @@ struct PopupView: View {
     }
 }
 
-private struct WindowDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        DragHandleView()
-    }
+private struct FallbackDisclosure: View {
+    let fallback: FallbackInfo
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-private final class DragHandleView: NSView {
-    override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
-    }
-
-    override var mouseDownCanMoveWindow: Bool { true }
-}
-
-private extension View {
-    /// Custom delayed hover tooltip. SwiftUI's `.help(...)` relies on
-    /// NSToolTipManager, which does not reliably show tooltips on the
-    /// nonactivating floating popup panel (never becomes key window).
-    func popupButtonHelp(_ text: String) -> some View {
-        modifier(PopupButtonHelpModifier(text: text))
-    }
-}
-
-private struct PopupButtonHelpModifier: ViewModifier {
-    let text: String
-    @State private var isHovering = false
-    @State private var showTooltip = false
-    @State private var hoverTask: Task<Void, Never>?
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                isHovering = hovering
-                hoverTask?.cancel()
-                if hovering {
-                    hoverTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 500 ms
-                        guard !Task.isCancelled, isHovering else { return }
-                        showTooltip = true
-                    }
-                } else {
-                    showTooltip = false
+    var body: some View {
+        DisclosureGroup("Why fallback was used") {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(fallback.primaryProvider.rawValue): \(fallback.message)")
+                    .fixedSize(horizontal: false, vertical: true)
+                if let details = fallback.details {
+                    Text(details)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .overlay(alignment: .top) {
-                if showTooltip {
-                    Text(text)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                        )
-                        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                        .fixedSize()
-                        .offset(y: -28)
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
+        }
+        .font(.system(size: 11))
+        .tint(.orange)
+    }
+}
+
+private struct ResultActionBar: View {
+    @ObservedObject var state: PopupState
+    let result: TranslationResult
+
+    var body: some View {
+        HStack(spacing: 8) {
+            PopupActionButton(title: "Copy", systemImage: "doc.on.doc") { copyToPasteboard(result.translated) }
+            if result.operation != .screenTranslate {
+                PopupActionButton(title: "Replace", systemImage: "arrow.uturn.left") {
+                    state.onReplace?(result.translated)
                 }
             }
-            .animation(.easeOut(duration: 0.12), value: showTooltip)
+            PopupActionButton(title: "Rewrite", systemImage: "wand.and.stars") {
+                state.onRewrite?(result.translated)
+            }
+            if result.operation != .explain {
+                PopupActionButton(title: "Explain", systemImage: "text.magnifyingglass") {
+                    state.onExplain?(result.translated)
+                }
+            }
+            Spacer(minLength: 0)
+            RetryMenu(state: state)
+        }
+    }
+}
+
+// MARK: - Error
+
+private struct ErrorContent: View {
+    @ObservedObject var state: PopupState
+    let error: PopupError
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text("Error")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.red)
+        }
+        Text(error.message)
+            .font(.system(size: 12))
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+        if let details = error.details {
+            DisclosureGroup("Details") {
+                Text(details)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 11))
+            .tint(.accentColor)
+        }
+        if !state.availableRetryProviders.isEmpty {
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                RetryMenu(state: state)
+            }
+        }
     }
 }

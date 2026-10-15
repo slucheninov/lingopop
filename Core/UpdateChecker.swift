@@ -53,7 +53,8 @@ final class UpdateChecker: ObservableObject {
         do {
             var request = URLRequest(url: apiURL, timeoutInterval: 10)
             request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tagName = json["tag_name"] as? String else { return }
             let version = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
@@ -67,7 +68,9 @@ final class UpdateChecker: ObservableObject {
 
     private func isNewer(_ latest: String, than current: String) -> Bool {
         let parse: (String) -> (Int, Int, Int) = { v in
-            let p = v.split(separator: ".").compactMap { Int($0) }
+            // Drop pre-release / build suffixes ("1.2.3-beta.1" -> "1.2.3").
+            let core = v.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? v
+            let p = core.split(separator: ".").compactMap { Int($0) }
             return (p.count > 0 ? p[0] : 0, p.count > 1 ? p[1] : 0, p.count > 2 ? p[2] : 0)
         }
         let l = parse(latest), c = parse(current)

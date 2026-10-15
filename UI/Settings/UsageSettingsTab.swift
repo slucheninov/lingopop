@@ -6,7 +6,7 @@ struct UsageSettingsTab: View {
     @State private var period: UsageStore.Period = .days30
     @State private var showResetConfirm = false
 
-    private let trackedProviders: [ProviderType] = [.claude, .openai, .gemini, .grok]
+    private let trackedProviders = UsageFormatting.trackedProviders
 
     var body: some View {
         let t = store.totals(in: period)
@@ -40,20 +40,20 @@ struct UsageSettingsTab: View {
                 HStack(spacing: 10) {
                     SummaryCard(
                         label: "Est. Cost",
-                        value: t.estimatedCost.map { formatCost($0) } ?? "~$?",
+                        value: t.estimatedCost.map { UsageFormatting.formatCost($0) } ?? "~$?",
                         subtitle: period.displayLabel,
                         valueColor: .red
                     )
                     SummaryCard(
                         label: "Tokens",
-                        value: formatTokens(t.inputTokens + t.outputTokens),
-                        subtitle: "in \(formatTokens(t.inputTokens)) · out \(formatTokens(t.outputTokens))"
+                        value: UsageFormatting.formatTokens(t.inputTokens + t.outputTokens),
+                        subtitle: "in \(UsageFormatting.formatTokens(t.inputTokens)) · out \(UsageFormatting.formatTokens(t.outputTokens))"
                     )
                     SummaryCard(
                         label: "Calls",
                         value: "\(t.calls)",
                         subtitle: t.calls > 0
-                            ? "avg \(formatTokens((t.inputTokens + t.outputTokens) / t.calls))/call"
+                            ? "avg \(UsageFormatting.formatTokens((t.inputTokens + t.outputTokens) / t.calls))/call"
                             : "no activity"
                     )
                 }
@@ -105,17 +105,6 @@ struct UsageSettingsTab: View {
             Button("Cancel", role: .cancel) {}
         }
     }
-
-    private func formatTokens(_ n: Int) -> String {
-        n >= 1000 ? String(format: "%.1fK", Double(n) / 1000) : "\(n)"
-    }
-
-    private func formatCost(_ cost: Double) -> String {
-        if cost >= 0.01 { return String(format: "$%.2f", cost) }
-        if cost >= 0.0001 { return String(format: "$%.4f", cost) }
-        if cost > 0 { return "<$0.0001" }
-        return "$0.00"
-    }
 }
 
 // MARK: - Summary Card
@@ -164,16 +153,16 @@ private struct ProviderBreakdownRow: View {
             .frame(width: 120, alignment: .leading)
 
             if let t = totals {
-                Text(formatTokens(t.inputTokens))
+                Text(UsageFormatting.formatTokens(t.inputTokens))
                     .font(.callout.monospacedDigit())
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(formatTokens(t.outputTokens))
+                Text(UsageFormatting.formatTokens(t.outputTokens))
                     .font(.callout.monospacedDigit())
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("\(t.calls)")
                     .font(.callout)
                     .frame(width: 52, alignment: .leading)
-                Text(t.estimatedCost.map { formatCost($0) } ?? "~$?")
+                Text(t.estimatedCost.map { UsageFormatting.formatCost($0) } ?? "~$?")
                     .font(.callout.monospacedDigit().weight(.medium))
                     .foregroundStyle(provider.usageColor)
                     .frame(width: 80, alignment: .trailing)
@@ -185,44 +174,6 @@ private struct ProviderBreakdownRow: View {
             }
         }
         .padding(.vertical, 8)
-    }
-
-    private func formatTokens(_ n: Int) -> String {
-        n >= 1000 ? String(format: "%.1fK", Double(n) / 1000) : "\(n)"
-    }
-
-    private func formatCost(_ cost: Double) -> String {
-        if cost >= 0.01 { return String(format: "$%.2f", cost) }
-        if cost >= 0.0001 { return String(format: "$%.4f", cost) }
-        if cost > 0 { return "<$0.0001" }
-        return "$0.00"
-    }
-}
-
-// MARK: - ProviderType extensions (private to this file)
-
-private extension ProviderType {
-    var usageDisplayName: String {
-        switch self {
-        case .claude: return "Claude"
-        case .openai: return "OpenAI"
-        case .gemini: return "Gemini"
-        case .grok: return "Grok"
-        case .googleFree: return "Google Free"
-        case .googleCloud: return "Google Cloud"
-        case .deepl: return "DeepL"
-        case .microsoftTranslator: return "Microsoft"
-        }
-    }
-
-    var usageColor: Color {
-        switch self {
-        case .claude: return Color(.systemRed)
-        case .openai: return Color(.systemGreen)
-        case .gemini: return Color(.systemBlue)
-        case .grok: return Color(.systemPurple)
-        default: return .secondary
-        }
     }
 }
 

@@ -6,10 +6,6 @@ enum LoginItemService {
 
     private static let log = Logger(subsystem: "com.lingopop.app", category: "LoginItem")
 
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
-    }
-
     static func setEnabled(_ enabled: Bool) {
         do {
             if enabled {

@@ -63,7 +63,7 @@ final class StatusItemController {
     }
 
     private func startSpin() {
-        guard let button = statusItem?.button else { return }
+        guard statusItem?.button != nil else { return }
         let frames = ["arrow.triangle.2.circlepath", "arrow.triangle.2.circlepath.circle"]
         var index = 0
         setSymbol(frames[0], tint: nil)

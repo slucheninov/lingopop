@@ -44,10 +44,13 @@ final class OperationRunner {
                     result.viaFallback = true
                     result.fallbackInfo = FallbackInfo(primaryProvider: primary, error: primaryError)
                     return OperationRunOutcome(result: result, detectedSource: detectedSource, viaFallback: true)
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     log.error("Fallback also failed: \(error.localizedDescription, privacy: .public)")
                 }
             }
+            try Task.checkCancellation()
             throw primaryError
         }
     }

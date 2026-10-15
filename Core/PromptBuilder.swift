@@ -38,12 +38,13 @@ enum PromptBuilder {
             """
         case .magic:
             let prompt = magicPrompt.isEmpty ? defaultMagicPrompt : magicPrompt
-            return prompt.replacingOccurrences(of: "{{targetLanguage}}", with: targetLanguage)
+            return prompt.replacingOccurrences(of: "{{targetLanguage}}", with: targetLanguage) + "\n" + fence
         }
     }
 
     static func userContent(_ text: String) -> String {
-        let escaped = text.replacingOccurrences(of: "<", with: "&lt;")
+        let escaped = text.replacingOccurrences(of: "&", with: "&amp;")
+                          .replacingOccurrences(of: "<", with: "&lt;")
                           .replacingOccurrences(of: ">", with: "&gt;")
         return "<text>\n\(escaped)\n</text>"
     }
@@ -62,6 +63,7 @@ enum PromptBuilder {
         return result
             .replacingOccurrences(of: "&lt;", with: "<")
             .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
     }
 
     private static func stripFence(_ text: String) -> String {

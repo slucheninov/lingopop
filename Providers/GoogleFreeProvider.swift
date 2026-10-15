@@ -8,39 +8,25 @@ struct GoogleFreeProvider: AIProvider {
     let requiresApiKey: Bool = false
     let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
 
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
-        return URLSession(configuration: config)
-    }()
-
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
-        guard operation == .translate || operation == .screenTranslate else {
-            throw TranslationError.operationNotSupported(provider: type, operation: operation)
-        }
-        let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
-        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
-            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
-        }
-        let target = LanguageCodes.code(for: config.targetLanguage)
-        var components = URLComponents(string: base.trimmingCharacters(in: ["/"]) + "/translate_a/single")
-        components?.queryItems = [
-            URLQueryItem(name: "client", value: "gtx"),
-            URLQueryItem(name: "sl", value: "auto"),
-            URLQueryItem(name: "tl", value: target),
-            URLQueryItem(name: "dt", value: "t"),
-            URLQueryItem(name: "q", value: text)
-        ]
-        guard let url = components?.url else {
-            throw TranslationError.invalidURL
-        }
+        let url = try ProviderHTTP.endpoint(
+            baseURL: config.baseURL,
+            defaultBaseURL: defaultBaseURL,
+            path: "/translate_a/single",
+            query: [
+                URLQueryItem(name: "client", value: "gtx"),
+                URLQueryItem(name: "sl", value: "auto"),
+                URLQueryItem(name: "tl", value: LanguageCodes.code(for: config.targetLanguage)),
+                URLQueryItem(name: "dt", value: "t"),
+                URLQueryItem(name: "q", value: text)
+            ]
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
 
-        let data = try await performRequest(request, session: Self.session)
+        let data = try await ProviderHTTP.perform(request)
 
         guard let json = try? JSONSerialization.jsonObject(with: data) else {
             throw TranslationError.decoding("Invalid JSON")

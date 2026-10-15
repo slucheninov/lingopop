@@ -33,7 +33,7 @@ public-repo/
 ```
 ┌──────────────────────────┐       push tag v0.2.2        ┌──────────────────────────┐
 │   PRIVATE repo (source)  │ ──────────────────────────►  │  GitHub Actions          │
-│                          │                              │  macos-14 runner         │
+│                          │                              │  macos-15 runner         │
 │   .github/workflows/     │                              │  • xcodegen + xcodebuild │
 │   release.yml            │                              │  • universal arm64+x86_64│
 └──────────────────────────┘                              │  • ad-hoc codesign       │
@@ -145,9 +145,9 @@ Remote Git/GitHub state є джерелом правди. Якщо запуск 
 Для resume release notes повторно передавати не потрібно: секція вже є в release-коміті. Resume підтримується лише коли `HEAD` — валідний release-коміт, який змінив тільки `project.yml` і `public-repo/CHANGELOG.md`, збільшив build number рівно на 1, додав рівно одну секцію цільової версії, а `origin/main` вказує на цей commit або його прямого parent. Наявні local/remote tag приймаються лише якщо вони вказують на цей exact commit; тег ніколи не пересувається і force-push не використовується. Якщо публічний release вже існує, скрипт знаходить відповідний tag-triggered run і повторно перевіряє assets/checksums.
 
 CI (`.github/workflows/release.yml`) після push тегу:
-1. Встановлює Xcode + xcodegen на macos-14 runner.
+1. Встановлює Xcode + xcodegen на macos-15 runner (Xcode 16.4; actions закріплені по commit SHA; `xcodegen` ставиться через brew без піну версії).
 2. Запускає `./scripts/release.sh <version>`.
-3. Генерує release notes та `SHA256SUMS`.
+3. Генерує release notes (секція `## v<version>` з `public-repo/CHANGELOG.md`, без приватних commit-повідомлень) та `SHA256SUMS`.
 4. Створює release у публічному репо.
 
 Локальна перевірка YAML або локальна збірка не вважається підтвердженням CI: оркестратор завершується успішно лише після `conclusion=success` exact workflow run та перевірки завантажених артефактів.
@@ -171,7 +171,7 @@ CI (`.github/workflows/release.yml`) після push тегу:
 
 **Actions → Release → Run workflow** → ввести версію → Run.
 
-Створює справжній реліз у публічному репо — використовувати обережно.
+Створює справжній реліз у публічному репо — використовувати обережно. Запуск дозволений лише з гілки за замовчуванням (workflow падає на іншій гілці).
 
 ## Версіонування
 

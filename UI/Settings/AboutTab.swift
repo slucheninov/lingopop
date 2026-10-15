@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct AboutTab: View {
-    @StateObject private var updater = UpdateChecker.shared
+    @ObservedObject private var updater = UpdateChecker.shared
 
     private var appVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.0"
@@ -34,11 +34,12 @@ struct AboutTab: View {
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
 
-            if updater.isUpdateAvailable(currentVersion: appVersion) {
+            if updater.isUpdateAvailable(currentVersion: appVersion),
+               let latestVersion = updater.latestVersion {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill")
                         .foregroundStyle(.white)
-                    Text("Version \(updater.latestVersion!) available")
+                    Text("Version \(latestVersion) available")
                         .fontWeight(.medium)
                         .foregroundStyle(.white)
                     Spacer()
@@ -64,7 +65,7 @@ struct AboutTab: View {
             Text("Select text anywhere on your Mac, press a shortcut, and get an instant AI translation, grammar fix, or rewrite in a popup near your cursor.")
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Text("Supports Claude, OpenAI, Gemini, Grok, and Google Translate. API keys are stored locally in an encrypted file. Settings sync between Macs via iCloud Drive.")
+            Text("Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys are stored locally in an encrypted file. Settings sync between Macs via iCloud Drive.")
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

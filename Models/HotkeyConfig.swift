@@ -13,7 +13,7 @@ struct HotkeyConfig: Codable, Equatable {
 
     static let empty = HotkeyConfig(keyCode: 0, modifierFlags: 0)
 
-    var isEmpty: Bool { keyCode == 0 }
+    var isEmpty: Bool { keyCode == 0 && modifierFlags == 0 }
 
     var modifiers: NSEvent.ModifierFlags {
         NSEvent.ModifierFlags(rawValue: modifierFlags)

@@ -76,7 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastOperation: AIOperation = .translate
     private var lastCapturedImage: NSImage?
     private var currentScreenTranslateTask: Task<Void, Never>?
+    private var screenTranslateToken: UUID?
     private var currentOperationTask: Task<Void, Never>?
+    private var operationTaskToken: UUID?
     private var previousApp: NSRunningApplication?
 
     private func observeSettings() {
@@ -84,7 +86,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .removeDuplicates()
             .sink { [weak self] configs in
                 self?.hotkeyManager.apply(configs)
-                self?.statusController.statusItem?.menu.map { self?.rebuildMenu($0) }
             }
             .store(in: &cancellables)
 
@@ -95,25 +96,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             .store(in: &cancellables)
 
-        settingsStore.$targetLanguage
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                self?.statusController.statusItem?.menu.map { self?.rebuildMenu($0) }
-            }
-            .store(in: &cancellables)
-
         settingsStore.$maxHistoryCount
             .removeDuplicates()
             .sink { [weak self] newMax in
                 self?.historyStore.trim(to: newMax)
-                self?.statusController.statusItem?.menu.map { self?.rebuildMenu($0) }
-            }
-            .store(in: &cancellables)
-
-        settingsStore.$menuHistoryCount
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                self?.statusController.statusItem?.menu.map { self?.rebuildMenu($0) }
             }
             .store(in: &cancellables)
 
@@ -256,8 +242,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 keyEquivalent: ""
             )
             if let hk = settingsStore.hotkey(for: operation), !hk.isEmpty, let key = hk.hotKeyKey {
-                item.keyEquivalent = String(describing: key).lowercased()
-                item.keyEquivalentModifierMask = hk.modifiers
+                // Named keys (Space, Return, F-keys, arrows) stringify to multi-character
+                // names that are not valid key equivalents; only set single characters.
+                let equivalent = String(describing: key).lowercased()
+                if equivalent.count == 1 {
+                    item.keyEquivalent = equivalent
+                    item.keyEquivalentModifierMask = hk.modifiers
+                }
             }
             item.representedObject = operation.rawValue
             item.image = NSImage(systemSymbolName: operation.systemImage, accessibilityDescription: nil)
@@ -305,19 +296,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkeyManager.apply(settingsStore.hotkeys)
     }
 
+    /// Runs `body` as the single tracked operation task. Any previous operation is
+    /// cancelled first; an identity token makes sure the old task's cleanup never
+    /// clears the handle of the new one.
+    private func startOperationTask(_ body: @escaping @MainActor () async -> Void) {
+        currentOperationTask?.cancel()
+        let token = UUID()
+        operationTaskToken = token
+        currentOperationTask = Task { @MainActor in
+            defer {
+                if self.operationTaskToken == token {
+                    self.currentOperationTask = nil
+                    self.operationTaskToken = nil
+                }
+            }
+            await body()
+        }
+    }
+
     private func handleHotkey(operation: AIOperation) {
         if operation == .screenTranslate {
             handleScreenTranslateHotkey()
             return
         }
         guard PermissionsManager.isAccessibilityGranted() else {
-            showAccessibilityHelpAlert()
+            PermissionAlert.show(.accessibility)
             return
         }
         previousApp = NSWorkspace.shared.frontmostApplication
-        currentOperationTask?.cancel()
-        currentOperationTask = Task { @MainActor in
-            defer { currentOperationTask = nil }
+        startOperationTask {
             do {
                 let captured = try await TextCapture.capture()
                 self.log.info("Captured: \(captured.text, privacy: .private)")
@@ -330,11 +337,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 let detectedSource = operation == .translate ? LanguageDetector.detect(captured.text) : nil
                 let targetLanguage = operation == .translate ? self.resolveTargetLanguage(detectedSource: detectedSource) : self.settingsStore.targetLanguage
-                self.lastCapturedText = captured.text
-                self.lastCursorPosition = captured.cursorPosition
-                self.lastDetectedSource = detectedSource
-                self.lastTargetLanguage = targetLanguage
-                self.lastOperation = operation
                 await self.runOperation(
                     operation: operation,
                     text: captured.text,
@@ -344,17 +346,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     primary: self.settingsStore.activeProvider,
                     allowFallback: true
                 )
-            } catch TextCaptureError.emptySelection {
-                self.statusController.apply(.error)
-                self.popup.state.setError("Nothing selected. Select some text first, then press the hotkey.")
-                self.popup.show(near: NSEvent.mouseLocation)
-            } catch TextCaptureError.clipboardTimeout {
-                self.statusController.apply(.error)
-                self.popup.state.setError("Clipboard didn't update in time. Try again.")
-                self.popup.show(near: NSEvent.mouseLocation)
+            } catch is CancellationError {
+                return
             } catch {
+                // TextCaptureError provides user-facing text via LocalizedError.
                 self.statusController.apply(.error)
-                self.popup.state.setError("\(error)")
+                self.popup.state.setError(error.localizedDescription)
                 self.popup.show(near: NSEvent.mouseLocation)
             }
         }
@@ -364,14 +361,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !PermissionsManager.isScreenRecordingGranted() {
             // Show system TCC prompt first (macOS 15+). If still denied, show manual instructions.
             guard PermissionsManager.requestScreenCaptureAccess() else {
-                showScreenRecordingHelpAlert()
+                PermissionAlert.show(.screenRecording)
                 return
             }
         }
         currentScreenTranslateTask?.cancel()
+        let token = UUID()
+        screenTranslateToken = token
         previousApp = NSWorkspace.shared.frontmostApplication
         currentScreenTranslateTask = Task { @MainActor in
-            defer { currentScreenTranslateTask = nil }
+            defer {
+                if screenTranslateToken == token {
+                    currentScreenTranslateTask = nil
+                    screenTranslateToken = nil
+                }
+            }
             lastCapturedText = nil
             do {
                 let screenRect = try await CaptureOverlayWindow.runSelection()
@@ -396,12 +400,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let ocrText: String
                 do {
                     ocrText = try await ScreenOCR.recognize(image: cgImage)
+                } catch is CancellationError {
+                    return
                 } catch {
                     statusController.apply(.error)
                     let retryProviders = visionCapableProviders()
-                    popup.state.setError(retryProviders.isEmpty
-                        ? "No text found in the selected area. Try a larger selection."
-                        : "No text found in the selected area. Try a larger selection or use Retry to send the image to AI.")
+                    let reason: String
+                    if case ScreenOCRError.noTextFound = error {
+                        reason = retryProviders.isEmpty
+                            ? "No text found in the selected area. Try a larger selection."
+                            : "No text found in the selected area. Try a larger selection or use Retry to send the image to AI."
+                    } else {
+                        reason = error.localizedDescription
+                    }
+                    popup.state.setError(reason)
                     popup.state.availableRetryProviders = retryProviders
                     return
                 }
@@ -435,7 +447,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } catch {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
                 statusController.apply(.error)
-                popup.state.setError("\(error)")
+                popup.state.setError(error.localizedDescription)
                 popup.show(near: NSEvent.mouseLocation)
             }
         }
@@ -450,6 +462,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         primary: ProviderType,
         allowFallback: Bool
     ) async {
+        // Single choke point for session state: Retry always re-runs the *last*
+        // operation on the *current* text. The captured image only stays relevant
+        // for Screen Translate itself.
+        lastOperation = operation
+        lastCapturedText = text
+        lastCursorPosition = cursorPosition
+        lastDetectedSource = detectedSource
+        lastTargetLanguage = targetLanguage
+        if operation != .screenTranslate {
+            lastCapturedImage = nil
+        }
+
         statusController.apply(.translating)
         popup.state.setLoading(operation: operation, original: text)
         popup.show(near: cursorPosition)
@@ -464,17 +488,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 allowFallback: allowFallback
             )
             present(result: outcome.result, source: outcome.detectedSource, viaFallback: outcome.viaFallback)
+        } catch is CancellationError {
+            // Superseded by a newer operation, which owns the popup now.
+            return
         } catch let primaryError as TranslationError {
             statusController.apply(.error)
             if case .missingApiKey = primaryError {
-                popup.state.setError("API key missing for \(primary.rawValue). Open Settings → Provider to add one.")
+                popup.state.setError("API key missing for \(primary.rawValue). Open Settings → Providers to add one.")
             } else {
                 popup.state.setError(primaryError)
             }
             popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
         } catch {
             statusController.apply(.error)
-            popup.state.setError("\(error)")
+            popup.state.setError(error.localizedDescription)
             popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
         }
     }
@@ -535,40 +562,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let operation = lastOperation
 
         if operation == .screenTranslate, let nsImage = lastCapturedImage {
-            Task { @MainActor in
-                guard let impl = translationService.providers[provider], impl.supportsVision else { return }
-                let config = settingsStore.config(for: provider, overrideTargetLanguage: target)
-                statusController.apply(.translating)
-                popup.state.setLoading(operation: .screenTranslate, original: "")
+            startOperationTask {
+                guard let impl = self.translationService.providers[provider], impl.supportsVision else { return }
+                let config = self.settingsStore.config(for: provider, overrideTargetLanguage: target)
+                self.statusController.apply(.translating)
+                self.popup.state.setLoading(operation: .screenTranslate, original: "")
                 do {
-                    guard let jpegData = jpegData(from: nsImage) else {
+                    guard let jpegData = self.jpegData(from: nsImage) else {
                         throw TranslationError.emptyResponse
                     }
                     let providerResult = try await impl.executeVision(image: jpegData, targetLanguage: target, config: config)
-                    translationService.recordUsage(providerResult.usage, provider: provider, model: config.model, operation: .screenTranslate)
+                    self.translationService.recordUsage(providerResult.usage, provider: provider, model: config.model, operation: .screenTranslate)
                     let result = TranslationResult(
-                        original: lastCapturedText ?? "",
+                        original: self.lastCapturedText ?? "",
                         translated: providerResult.text,
                         targetLanguage: target,
                         provider: provider,
-                        operation: .screenTranslate
+                        operation: .screenTranslate,
+                        truncated: providerResult.truncated
                     )
-                    present(result: result, source: lastDetectedSource, viaFallback: false)
+                    self.present(result: result, source: self.lastDetectedSource, viaFallback: false)
+                } catch is CancellationError {
+                    return
                 } catch let error as TranslationError {
-                    statusController.apply(.error)
-                    popup.state.setError(error)
-                    popup.state.availableRetryProviders = visionCapableProviders(excluding: provider)
+                    self.statusController.apply(.error)
+                    self.popup.state.setError(error)
+                    self.popup.state.availableRetryProviders = self.visionCapableProviders(excluding: provider)
                 } catch {
-                    statusController.apply(.error)
-                    popup.state.setError("\(error)")
-                    popup.state.availableRetryProviders = visionCapableProviders(excluding: provider)
+                    self.statusController.apply(.error)
+                    self.popup.state.setError(error.localizedDescription)
+                    self.popup.state.availableRetryProviders = self.visionCapableProviders(excluding: provider)
                 }
             }
             return
         }
 
         guard let text = lastCapturedText else { return }
-        Task { @MainActor in
+        startOperationTask {
             await self.runOperation(
                 operation: operation,
                 text: text,
@@ -591,7 +621,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let cursor = lastCursorPosition,
               let target = lastTargetLanguage else { return }
         let source = lastDetectedSource
-        Task { @MainActor in
+        startOperationTask {
             await self.runOperation(
                 operation: .screenTranslate,
                 text: text,
@@ -607,7 +637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func rewriteResult(_ text: String) {
         guard let cursor = lastCursorPosition,
               let target = lastTargetLanguage else { return }
-        Task { @MainActor in
+        startOperationTask {
             await self.runOperation(
                 operation: .rewrite,
                 text: text,
@@ -623,7 +653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func explainResult(_ text: String) {
         guard let cursor = lastCursorPosition,
               let target = lastTargetLanguage else { return }
-        Task { @MainActor in
+        startOperationTask {
             await self.runOperation(
                 operation: .explain,
                 text: text,
@@ -639,8 +669,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func retranslateWith(_ targetLanguage: String) {
         guard let text = lastCapturedText,
               let cursor = lastCursorPosition else { return }
-        lastTargetLanguage = targetLanguage
-        Task { @MainActor in
+        startOperationTask {
             await self.runOperation(
                 operation: .translate,
                 text: text,
@@ -656,51 +685,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func replaceSelectedText(with text: String) {
         let pasteboard = NSPasteboard.general
         let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        let ownChangeCount = PasteboardSnapshot.writeTemporary(text, to: pasteboard)
+        let targetApp = previousApp
+        let errorAnchor = lastCursorPosition ?? NSEvent.mouseLocation
         popup.close()
-        Task { @MainActor in
-            try await Task.sleep(nanoseconds: Timing.pasteDelay)
-            previousApp?.activate(options: .activateIgnoringOtherApps)
-            simulateCommandV()
-            try await Task.sleep(nanoseconds: Timing.clipboardRestoreDelay)
-            snapshot.restore(to: pasteboard)
-        }
-    }
-
-    private struct PasteboardSnapshot {
-        let items: [NSPasteboardItem]
-
-        static func capture(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
-            let copiedItems: [NSPasteboardItem] = pasteboard.pasteboardItems?.map { item in
-                let copy = NSPasteboardItem()
-                for type in item.types {
-                    if let data = item.data(forType: type) {
-                        copy.setData(data, forType: type)
+        statusController.apply(.idle)
+        startOperationTask {
+            var pasted = false
+            defer {
+                // Only restore the user's clipboard if nobody wrote to it since our write.
+                if pasteboard.changeCount == ownChangeCount {
+                    if pasted {
+                        snapshot.restore(to: pasteboard)
+                    } else {
+                        // Paste failed or was cancelled: leave the text as a normal
+                        // (non-transient) clipboard entry so the user can paste manually.
+                        pasteboard.clearContents()
+                        pasteboard.setString(text, forType: .string)
                     }
                 }
-                return copy
-            } ?? []
-            return PasteboardSnapshot(items: copiedItems)
-        }
-
-        func restore(to pasteboard: NSPasteboard) {
-            pasteboard.clearContents()
-            if !items.isEmpty {
-                _ = pasteboard.writeObjects(items)
+            }
+            do {
+                try await Task.sleep(nanoseconds: Timing.pasteDelay)
+                guard let targetApp, await self.activateAndConfirm(targetApp) else {
+                    self.statusController.apply(.error)
+                    self.popup.state.setError("Couldn't switch back to the original app, so nothing was replaced. The text is on your clipboard; paste it manually with ⌘V.")
+                    self.popup.show(near: errorAnchor)
+                    return
+                }
+                KeyboardSimulator.simulateCommandV()
+                pasted = true
+                try await Task.sleep(nanoseconds: Timing.clipboardRestoreDelay)
+            } catch {
+                // Cancelled. If the paste already went out, `pasted` restores the clipboard.
+                return
             }
         }
     }
 
-    private func simulateCommandV() {
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let v = CGKeyCode(0x09) // kVK_ANSI_V
-        let down = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false)
-        down?.flags = .maskCommand
-        up?.flags = .maskCommand
-        down?.post(tap: .cgAnnotatedSessionEventTap)
-        up?.post(tap: .cgAnnotatedSessionEventTap)
+    /// Activates `app` and polls (up to ~300 ms) until it is actually frontmost.
+    private func activateAndConfirm(_ app: NSRunningApplication) async -> Bool {
+        let pid = app.processIdentifier
+        app.activate(options: .activateIgnoringOtherApps)
+        let deadline = Date().addingTimeInterval(0.3)
+        while Date() < deadline {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid { return true }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
     }
 
     private func resolveTargetLanguage(detectedSource: String?) -> String {
@@ -711,60 +743,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return mapped
         }
         return settingsStore.targetLanguage
-    }
-
-    private func showAccessibilityHelpAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Accessibility access required"
-        alert.informativeText = """
-        Steps:
-        1. Open System Settings → Privacy & Security → Accessibility
-        2. Make sure LingoPop is in the list and the toggle is ON
-        3. Quit LingoPop completely (menu bar → Quit) and relaunch
-
-        macOS only reads the new permission after a full restart of the app.
-        """
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Quit LingoPop")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        switch response {
-        case .alertFirstButtonReturn:
-            PermissionsManager.openAccessibilitySettings()
-        case .alertSecondButtonReturn:
-            NSApp.terminate(nil)
-        default:
-            break
-        }
-    }
-
-    private func showScreenRecordingHelpAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Screen Recording access required"
-        alert.informativeText = """
-        Steps:
-        1. Open System Settings → Privacy & Security → Screen Recording
-        2. Make sure LingoPop is in the list and the toggle is ON
-        3. Quit LingoPop completely (menu bar → Quit) and relaunch
-
-        macOS only reads the new permission after a full restart of the app.
-        """
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Quit LingoPop")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        switch response {
-        case .alertFirstButtonReturn:
-            PermissionsManager.openScreenRecordingSettings()
-        case .alertSecondButtonReturn:
-            NSApp.terminate(nil)
-        default:
-            break
-        }
     }
 
     @objc private func operationMenuAction(_ sender: NSMenuItem) {
@@ -797,20 +775,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let original = entry.original.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
         let translated = entry.translated.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
         return "\(original) → \(translated)"
-    }
-
-    private func widestShortcutDisplayWidth(attrs: [NSAttributedString.Key: Any]) -> CGFloat {
-        var maxWidth: CGFloat = 0
-        for operation in AIOperation.allCases {
-            guard let hk = settingsStore.hotkey(for: operation), !hk.isEmpty else { continue }
-            let width = (hk.displayString as NSString).size(withAttributes: attrs).width
-            maxWidth = max(maxWidth, width)
-        }
-        for shortcut in ["⌘H", "⌘,", "⌘Q"] {
-            let width = (shortcut as NSString).size(withAttributes: attrs).width
-            maxWidth = max(maxWidth, width)
-        }
-        return maxWidth
     }
 
     private static let historyHeaderText = "Select the clip you want to add to your clipboard"

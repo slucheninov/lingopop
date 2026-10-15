@@ -74,7 +74,8 @@ enum CloudStorage {
             }
         }
         if let error = coordinatorError ?? readError { throw error }
-        return result!
+        guard let result else { throw CocoaError(.fileReadUnknown) }
+        return result
     }
 
     private static func coordinatedWrite(_ data: Data, to url: URL) throws {

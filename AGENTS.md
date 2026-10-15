@@ -14,7 +14,7 @@ LingoPop is a native macOS menu-bar app (Swift / AppKit + SwiftUI). User selects
 
 Each operation has its own configurable global hotkey and its own menu-bar item. The popup offers Copy, Replace (paste back into the source app via simulated `Cmd+V`), and Retry-with-other-provider. Replace is hidden for Screen Translate results (can't paste back into an image).
 
-Supported providers: **Claude** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Grok** (xAI, OpenAI-compatible `/v1/chat/completions`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate]`; Claude/OpenAI/Gemini/Grok handle all operations. Claude/OpenAI/Gemini/Grok also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
+Supported providers: **Claude** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Grok** (xAI, OpenAI-compatible `/v1/chat/completions`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, no chat/rewrite — translate and Screen Translate only), **Google Translate** (Cloud Translation v2 — translate and Screen Translate only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate, .screenTranslate]` (Screen Translate runs them on the OCR text); Claude/OpenAI/Gemini/Grok handle all operations. Claude/OpenAI/Gemini/Grok also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
 
 Requirements: macOS 13.0+, Xcode 15+. The app uses `.accessory` activation policy (no Dock icon, `LSUIElement = YES`), is not sandboxed (needs to post CGEvents and read another app's clipboard via Accessibility, and capture screen content via Screen Recording TCC), and is signed with a self-signed cert.
 
@@ -102,14 +102,14 @@ End-to-end setup is in `RELEASING.md`.
 **Screen Translate lifecycle** (`AppDelegate.handleScreenTranslateHotkey()`):
 1. Record `previousApp` (frontmost app before overlay), then call `CaptureOverlayWindow.runSelection()` — creates one `NSPanel` per screen (handles mixed Retina/non-Retina setups), tracks mouse via `NSEvent.addLocalMonitorForEvents` in global AppKit coordinates. Returns the selection rect in global screen coords or throws `CaptureOverlayError.cancelled`.
 2. Restore `previousApp` focus and wait 150 ms so any subsequent `simulateCommandC()` goes to the right app (not LingoPop).
-3. `ScreenCapture.capture(rect:)` converts from AppKit coordinates (Y-up, origin at bottom-left) to CG coordinates (Y-down) using `NSScreen.main?.frame.height`, then calls `CGWindowListCreateImage`. Requires Screen Recording TCC permission.
+3. `ScreenCapture.capture(rect:)` converts from AppKit coordinates (Y-up, origin at bottom-left) to CG coordinates (Y-down) by locating the `NSScreen` that contains (or best overlaps) the selection rect and converting through that screen's display bounds (correct for multi-monitor layouts), then calls `CGWindowListCreateImage`. Requires Screen Recording TCC permission.
 4. `ScreenOCR.recognize(image:)` runs Apple Vision `VNRecognizeTextRequest` and returns the joined string. If it yields no text, retry providers (vision-capable ones) are offered instead.
 5. Popup shows the `.ocr(text:)` phase: recognized text + Copy / Translate / Retry buttons. OCR text is auto-copied to clipboard. `availableRetryProviders` is set to `visionCapableProviders()` so Retry sends the image directly to Claude/OpenAI/Gemini/Grok.
 6. When user taps Translate, `translateScreenOCR(_:)` calls `runOperation(.screenTranslate, ...)`. The translation result is auto-copied to clipboard via `present(result:source:viaFallback:)`.
 
 ### Providers
 
-Eight `AIProvider` implementations under `Providers/`, each conforming to:
+Eight providers under `Providers/` (seven `AIProvider` implementation files plus the `GrokProvider.swift` preset of `OpenAIProvider`), each conforming to:
 
 ```swift
 protocol AIProvider {
@@ -125,9 +125,10 @@ protocol AIProvider {
 
 - **ClaudeProvider** (`/v1/messages`), **OpenAIProvider** (`/v1/chat/completions`), **GeminiProvider** (`/v1beta/models/{model}:generateContent`) handle all operations including `.screenTranslate`, and declare `supportsVision = true` — they can receive the captured image directly and do combined OCR + translation in one step.
 - **GrokProvider** (`Providers/GrokProvider.swift`) — xAI, OpenAI-compatible `/v1/chat/completions` at `api.x.ai`. It is not a separate type: `OpenAIProvider` takes `type` / `defaultBaseURL` / `availableModels` as init parameters and `OpenAIProvider.grok` is a preconfigured instance. All operations supported, `supportsVision = true`.
-- **GoogleFreeProvider** uses the unofficial `translate.googleapis.com/translate_a/single` endpoint — no API key, only supports `.translate`.
-- **GoogleCloudProvider** uses the official Cloud Translation v2 API (`?key=...`) — only `.translate`. Supports an optional `Referer` header for keys with HTTP-referrer restriction.
-- **DeepLProvider** and **MicrosoftTranslatorProvider** — translate-only.
+- **GoogleFreeProvider** uses the unofficial `translate.googleapis.com/translate_a/single` endpoint — no API key, supports `.translate` and `.screenTranslate` (text-only).
+- **GoogleCloudProvider** uses the official Cloud Translation v2 API (`?key=...`) — supports `[.translate, .screenTranslate]`. Supports an optional `Referer` header for keys with HTTP-referrer restriction.
+- **DeepLProvider** and **MicrosoftTranslatorProvider** — translate + Screen Translate (no chat-style operations).
+- **`ProviderHTTP`** (`Providers/ProviderHTTP.swift`) — shared HTTP helper used by every provider: one shared `URLSession` (30 s request / 60 s resource timeouts), refusal of cross-origin redirects (so API keys never follow a redirect to another host), https-only base URL check, and JSON request-building / typed-decoding helpers. New providers should go through it instead of building their own session.
 
 `TranslationService` (`Core/TranslationService.swift`) just holds the dict `[ProviderType: AIProvider]` and forwards calls. It also exposes the dict to the UI so the Provider tab can render model presets and supportedOperations badges per provider.
 
@@ -139,7 +140,7 @@ Three distinct stores, each with a specific reason:
 
 - **`SettingsStore`** (`Core/SettingsStore.swift`) — `@Published` fields for everything except API keys. Persisted both to `UserDefaults` (local fallback) and to `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/settings.json` (iCloud Drive folder) when `iCloudSync` is on. `installAutoSave()` debounces `@Published` changes 200 ms before writing. `installCloudPolling()` re-reads the cloud file every 30 s; if `mtime` advanced (another Mac wrote it), it calls `apply(_:)` with `suppressAutoSave = true` so the reload doesn't trigger a save loop.
 - **`TranslationHistoryStore`** (`Core/TranslationHistoryStore.swift`) — last N entries, same dual UserDefaults + iCloud layout.
-- **`KeychainService` / `SecretStorage`** (`Core/`) — `KeychainService` is just a thin facade over `SecretStorage`, which stores API keys in `~/Library/Application Support/LingoPop/secrets.dat` (AES-GCM via CryptoKit, key derived from `SHA256(IOPlatformUUID + salt)`). **Do not put keys in iCloud-synced settings.json.** macOS Keychain is intentionally not used: with self-signed builds it would re-prompt for password on every rebuild. The `secrets.dat` file is machine-bound and 0600.
+- **`KeychainService` / `SecretStorage`** (`Core/`) — `KeychainService` is just a thin facade over `SecretStorage`, which stores API keys in `~/Library/Application Support/LingoPop/secrets.dat` (AES-GCM via CryptoKit, key derived with HKDF-SHA256 from `IOPlatformUUID` and a random per-install 32-byte salt stored in `secrets.salt`; if IOKit cannot supply the UUID, a random persisted `machine.key` is used instead; the derived key is cached in memory; files written 0600 via temp file + atomic rename; pre-HKDF `SHA256(UUID|salt)` files are migrated on first read). This is obfuscation at rest, not a security boundary against same-user processes. **Do not put keys in iCloud-synced settings.json.** macOS Keychain is intentionally not used: with self-signed builds it would re-prompt for password on every rebuild. The `secrets.dat` file is machine-bound and 0600.
 
 `hasApiKey` reads a UserDefaults flag (`LingoPop.secretHas.*`) without touching the encrypted file, so provider switching in the UI doesn't trigger decryption.
 
@@ -156,17 +157,29 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - **StatusItemController** swaps the menu-bar icon between idle (globe), translating (spinning arrows), and error (red triangle, auto-resets after 3 s).
 - **HotkeyRecorderField** (`UI/HotkeyRecorderField.swift`) is an `NSViewRepresentable` wrapping a custom `NSButton` that intercepts `keyDown` while recording, builds a `HotkeyConfig` from the `event.keyCode` and modifier flags.
 
+### Shared helpers
+
+- **`Core/PasteboardSnapshot.swift`** — saves / restores all pasteboard items (used by `TextCapture` and Replace).
+- **`Core/KeyboardSimulator.swift`** — posts the simulated `Cmd+C` / `Cmd+V` `CGEvent`s; the single place that does so.
+- **`UI/PermissionAlert.swift`** — shared Accessibility / Screen Recording alerts.
+- **`UI/ProviderType+UI.swift`** — UI-facing helpers on `ProviderType` (display names, colors, ordering) so views don't duplicate provider lists.
+- **`Providers/ProviderHTTP.swift`** — see Providers above.
+
+### Code audits
+
+Past audits and their per-finding status: [docs/code-audit-2026-06-12.md](docs/code-audit-2026-06-12.md), [docs/code-audit-2026-10-15.md](docs/code-audit-2026-10-15.md).
+
 ### Screen Translate components
 
 - **`UI/CaptureOverlayWindow.swift`** — one `NSPanel` per `NSScreen.screens`. Uses `NSEvent.addLocalMonitorForEvents` (requires `NSApp.activate`) to track mouse in global AppKit coords via `NSEvent.mouseLocation`. `OverlayDrawingView` converts global → local coords using `screenOrigin` (the screen's `frame.origin`). After selection, `previousApp?.activate(options: .activateIgnoringOtherApps)` + 150 ms sleep restores focus so subsequent `simulateCommandC()` isn't misdirected to LingoPop.
-- **`Core/ScreenCapture.swift`** — `CGWindowListCreateImage` with AppKit↔CG Y-flip (`NSScreen.main?.frame.height - rect.maxY`). Returns `CGImage`; throws `ScreenCaptureError.tooSmall` for areas under 10×10 px. Requires Screen Recording TCC.
-- **`Core/ScreenOCR.swift`** — `VNRecognizeTextRequest` via Vision framework. Joins recognized strings with spaces; throws if result is empty.
-- **`Core/PermissionsManager.swift`** — `isScreenRecordingGranted()` = `CGPreflightScreenCaptureAccess()`; `requestScreenCaptureAccess()` = `CGRequestScreenCaptureAccess()` on macOS 15+ (auto-prompts on first `CGWindowListCreateImage` call on earlier versions).
+- **`Core/ScreenCapture.swift`** — `CGWindowListCreateImage` with AppKit↔CG Y-flip (per-screen: the screen containing the rect is found and the flip is done relative to its display bounds). Returns `CGImage`; throws `ScreenCaptureError.tooSmall` for areas under 10×10 px. Requires Screen Recording TCC.
+- **`Core/ScreenOCR.swift`** — `VNRecognizeTextRequest` via Vision framework. Joins recognized lines with newlines; throws if result is empty.
+- **`Core/PermissionsManager.swift`** — `isScreenRecordingGranted()` = `CGPreflightScreenCaptureAccess()`; `requestScreenCaptureAccess()` = `CGRequestScreenCaptureAccess()` called unconditionally on every macOS version.
 - **`UI/SettingsView.swift`** — `MainSettingsTab` has a Screen Recording permission section mirroring the Accessibility section: shows green checkmark when granted, or "Request" + "Open Settings" buttons when denied.
 
 ### Settings UI structure
 
-`SettingsView` is a `TabView` with four tabs: Main, Providers, Shortcuts, About. The Providers tab is an `HStack` with a sidebar `List(selection:)` on the left and a per-provider detail form on the right (System Settings → Internet Accounts pattern). The "Active" provider is set with a dedicated button, distinct from "selected for editing in the sidebar" — these are intentionally separate concepts.
+`SettingsView` is a `TabView` with six tabs: Main, Providers, Shortcuts, Usage, Magic, About (files under `UI/Settings/` plus `UI/Settings/UsageSettingsTab.swift`). The Providers tab is an `HStack` with a sidebar `List(selection:)` on the left and a per-provider detail form on the right (System Settings → Internet Accounts pattern). The "Active" provider is set with a dedicated button, distinct from "selected for editing in the sidebar" — these are intentionally separate concepts.
 
 ## Things to be careful about
 

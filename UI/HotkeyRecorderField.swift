@@ -20,7 +20,7 @@ private struct HotkeyRecorderRepresentable: NSViewRepresentable {
         let view = RecorderButton(frame: NSRect(x: 0, y: 0, width: 160, height: 24))
         view.config = config
         view.onChange = { newConfig in
-            DispatchQueue.main.async { config = newConfig }
+            config = newConfig
         }
         return view
     }

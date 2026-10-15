@@ -26,7 +26,7 @@ settings:
 packages:
   HotKey:
     url: https://github.com/soffes/HotKey
-    exactVersion: "0.2.0"
+    exactVersion: "0.2.1"
 
 targets:
   LingoPop:
@@ -48,12 +48,10 @@ targets:
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSAppleEventsUsageDescription: "LingoPop needs Accessibility access to capture selected text."
         NSHumanReadableCopyright: ""
     entitlements:
       path: App/LingoPop.entitlements
       properties:
-        com.apple.security.automation.apple-events: true
         com.apple.security.app-sandbox: false
         com.apple.security.network.client: true
     settings:

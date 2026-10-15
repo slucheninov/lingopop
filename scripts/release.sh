@@ -44,6 +44,15 @@ if [[ -z "$VERSION" ]]; then
     if [[ -z "$VERSION" ]]; then VERSION="0.0.0"; fi
 fi
 
+if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Invalid version: '$VERSION' (expected MAJOR.MINOR.PATCH)" >&2
+    exit 1
+fi
+case "$ARCH_LABEL" in
+    universal|arm64|x86_64) ;;
+    *) echo "Invalid --arch: '$ARCH_LABEL' (expected universal|arm64|x86_64)" >&2; exit 1 ;;
+esac
+
 echo "→ Version: $VERSION"
 echo "→ Architecture(s): $ARCHS_FLAG"
 
@@ -80,9 +89,11 @@ xattr -cr "$STAGED_APP"
 
 if security find-certificate -c "LingoPop Dev" >/dev/null 2>&1; then
     SIGN_IDENTITY="LingoPop Dev"
+    SIGN_OPTS=()   # NOTE: no --options runtime: hardened-runtime library validation rejects the Xcode debug dylib / non-matching Team ID with a self-signed cert
 else
     echo "Warning: 'LingoPop Dev' cert missing — signing ad-hoc. Run scripts/setup-cert.sh."
     SIGN_IDENTITY="-"
+    SIGN_OPTS=()
 fi
 FRAMEWORKS_DIR="$STAGED_APP/Contents/Frameworks"
 if [ -d "$FRAMEWORKS_DIR" ]; then
@@ -92,6 +103,7 @@ if [ -d "$FRAMEWORKS_DIR" ]; then
 fi
 codesign --force \
     --sign "$SIGN_IDENTITY" \
+    ${SIGN_OPTS[@]+"${SIGN_OPTS[@]}"} \
     --entitlements "$PROJECT_DIR/App/LingoPop.entitlements" \
     "$STAGED_APP" 2>&1 | tail -3
 

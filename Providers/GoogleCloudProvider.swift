@@ -15,13 +15,6 @@ struct GoogleCloudProvider: AIProvider {
         let format: String
     }
 
-    private static let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
-        return URLSession(configuration: config)
-    }()
-
     private struct ResponseBody: Decodable {
         struct DataField: Decodable {
             struct Translation: Decodable {
@@ -33,49 +26,32 @@ struct GoogleCloudProvider: AIProvider {
     }
 
     func execute(text: String, operation: AIOperation, config: ProviderConfig) async throws -> ProviderResult {
-        guard operation == .translate || operation == .screenTranslate else {
-            throw TranslationError.operationNotSupported(provider: type, operation: operation)
-        }
-        guard !config.apiKey.isEmpty else { throw TranslationError.missingApiKey }
-        let base = config.baseURL.isEmpty ? defaultBaseURL : config.baseURL
-        guard let schemeURL = URL(string: base), schemeURL.scheme == "https" else {
-            throw TranslationError.invalidConfiguration("baseURL must use HTTPS scheme")
-        }
-        let target = LanguageCodes.code(for: config.targetLanguage)
-
-        var components = URLComponents(string: base.trimmingCharacters(in: ["/"]) + "/language/translate/v2")
-        components?.queryItems = [URLQueryItem(name: "key", value: config.apiKey)]
-        guard let url = components?.url else {
-            throw TranslationError.invalidURL
-        }
+        let url = try ProviderHTTP.endpoint(
+            baseURL: config.baseURL,
+            defaultBaseURL: defaultBaseURL,
+            path: "/language/translate/v2",
+            query: [URLQueryItem(name: "key", value: config.apiKey)]
+        )
 
         let body = RequestBody(
             q: text,
-            target: target,
+            target: LanguageCodes.code(for: config.targetLanguage),
             model: config.model.isEmpty ? nil : config.model,
             format: "text"
         )
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var headers: [String: String] = [:]
         if let referer = config.referer, !referer.isEmpty {
-            request.setValue(referer, forHTTPHeaderField: "Referer")
+            headers["Referer"] = referer
         }
-        request.httpBody = try JSONEncoder().encode(body)
+        let request = try ProviderHTTP.jsonRequest(url: url, headers: headers, body: body)
 
-        let data = try await performRequest(request, session: Self.session)
+        let data = try await ProviderHTTP.perform(request)
 
-        do {
-            let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
-            guard let translated = decoded.data.translations.first?.translatedText, !translated.isEmpty else {
-                throw TranslationError.emptyResponse
-            }
-            return ProviderResult(text: translated.trimmingCharacters(in: .whitespacesAndNewlines), usage: nil)
-        } catch let error as TranslationError {
-            throw error
-        } catch {
-            throw TranslationError.decoding(error.localizedDescription)
+        let decoded = try ProviderHTTP.decode(ResponseBody.self, from: data)
+        guard let translated = decoded.data.translations.first?.translatedText, !translated.isEmpty else {
+            throw TranslationError.emptyResponse
         }
+        return ProviderResult(text: translated.trimmingCharacters(in: .whitespacesAndNewlines), usage: nil)
     }
 }

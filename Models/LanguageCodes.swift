@@ -34,12 +34,21 @@ enum LanguageCodes {
     ]
 
     static func code(for name: String) -> String {
-        if let code = nameToCode[name] { return code }
-        if name.count == 2 { return name.lowercased() }
-        return name.lowercased()
+        nameToCode[name] ?? name.lowercased()
     }
 
+    /// DeepL expects uppercase codes and `NB` for Norwegian.
     static func deepLCode(for name: String) -> String {
-        code(for: name).uppercased()
+        if name == "Norwegian" { return "NB" }
+        return code(for: name).uppercased()
+    }
+
+    /// Microsoft Translator expects `nb` for Norwegian and `zh-Hans` for (simplified) Chinese.
+    static func microsoftCode(for name: String) -> String {
+        switch name {
+        case "Norwegian": return "nb"
+        case "Chinese": return "zh-Hans"
+        default: return code(for: name)
+        }
     }
 }

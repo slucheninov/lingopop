@@ -2,6 +2,7 @@ import AppKit
 import HotKey
 import os
 
+@MainActor
 final class HotkeyManager {
 
     private var hotKeys: [AIOperation: HotKey] = [:]
@@ -23,9 +24,5 @@ final class HotkeyManager {
             hotKeys[operation] = hk
             log.info("apply \(operation.rawValue, privacy: .public): key=\(String(describing: key), privacy: .public) mods=\(config.modifierFlags, privacy: .public)")
         }
-    }
-
-    func unregister() {
-        hotKeys.removeAll()
     }
 }

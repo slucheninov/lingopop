@@ -19,73 +19,6 @@ struct ProviderSettingsTab: View {
     }
 }
 
-private struct ProviderSidebar: View {
-    @ObservedObject var store: SettingsStore
-    @Binding var selected: ProviderType
-    let providerImpls: [ProviderType: AIProvider]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            List(selection: $selected) {
-                ForEach(ProviderType.allCases, id: \.self) { type in
-                    HStack(spacing: 8) {
-                        Image(systemName: type.sfSymbol)
-                            .font(.system(size: 14))
-                            .foregroundStyle(type.iconColor)
-                            .frame(width: 18)
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 5) {
-                                Text(type.rawValue)
-                                    .font(.system(size: 13, weight: .medium))
-                                if type == store.activeProvider {
-                                    Image(systemName: "star.fill")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(.yellow)
-                                }
-                            }
-                            providerStatusLine(type)
-                        }
-                        Spacer()
-                    }
-                    .padding(.vertical, 2)
-                    .tag(type)
-                }
-            }
-            .listStyle(.sidebar)
-        }
-        .frame(maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private func providerStatusLine(_ type: ProviderType) -> some View {
-        let needsKey = providerImpls[type]?.requiresApiKey ?? true
-        let hasKey = store.hasApiKey(for: type)
-        HStack(spacing: 4) {
-            if !needsKey {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.green)
-                Text("No key needed")
-            } else if hasKey {
-                Image(systemName: "key.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.green)
-                Text("Key set")
-            } else {
-                Image(systemName: "key")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                Text("No key")
-            }
-            if let fallback = store.fallback(for: type) {
-                Text("· ↳ \(fallback.rawValue)")
-            }
-        }
-        .font(.system(size: 10))
-        .foregroundStyle(.secondary)
-    }
-}
-
 private struct ProviderDetailView: View {
 
     @ObservedObject var store: SettingsStore
@@ -100,154 +33,43 @@ private struct ProviderDetailView: View {
     @State private var savedFlash: Bool = false
     @State private var savedFlashTask: Task<Void, Never>?
     @State private var hasKey: Bool = false
-    @State private var showEndpointHelp: Bool = false
 
-    private var requiresKey: Bool { providerImpls[provider]?.requiresApiKey ?? true }
-    private var supportedOps: Set<AIOperation> { providerImpls[provider]?.supportedOperations ?? [] }
+    private var impl: AIProvider? { providerImpls[provider] }
+    private var requiresKey: Bool { impl?.requiresApiKey ?? true }
+    private var supportedOps: Set<AIOperation> { impl?.supportedOperations ?? [] }
+
+    /// Empty means "use the default"; anything else must be HTTPS so keys and
+    /// text are never sent in clear text by a typo.
+    private var baseURLError: String? {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.lowercased().hasPrefix("https://") { return nil }
+        return "Base URL must start with https://"
+    }
 
     var body: some View {
         Form {
-            Section {
-                HStack(spacing: 10) {
-                    Image(systemName: provider.sfSymbol)
-                        .font(.system(size: 24))
-                        .foregroundStyle(provider.iconColor)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(provider.rawValue)
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(supportedOperationsLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if provider == store.activeProvider {
-                        Label("Active", systemImage: "star.fill")
-                            .labelStyle(.titleAndIcon)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.yellow)
-                    } else {
-                        Button("Set as active") { store.activeProvider = provider }
-                    }
-                }
-                .padding(.vertical, 4)
-            }
+            headerSection
 
-            if requiresKey {
-                Section("API key") {
-                    HStack(spacing: 8) {
-                        Image(systemName: hasKey ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(hasKey ? .green : .secondary)
-                        Text(hasKey ? "A key is stored" : "No key set")
-                            .font(.system(size: 12))
-                        Spacer()
-                        if hasKey {
-                            Button("Clear") { clearKey() }
-                        }
-                    }
-                    SecureField(hasKey ? "Enter a new key to replace" : "Paste your API key", text: $apiKeyInput)
-                        .textFieldStyle(.roundedBorder)
-                    if let error = store.apiKeySaveError {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.caption)
-                    }
-                    Text("Stored locally in an encrypted file (AES-GCM, machine-bound).")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            } else {
-                Section("API key") {
-                    Label("No key needed", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 12))
-                }
-            }
+            ApiKeySection(
+                requiresKey: requiresKey,
+                hasKey: hasKey,
+                apiKeyInput: $apiKeyInput,
+                saveError: store.apiKeySaveError,
+                onClear: clearKey
+            )
 
-            Section("Endpoint") {
-                HStack(spacing: 8) {
-                    TextField("Base URL", text: $baseURL)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled(true)
-                    Button {
-                        showEndpointHelp = true
-                    } label: {
-                        Image(systemName: "questionmark.circle")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Show default endpoint")
-                    .popover(isPresented: $showEndpointHelp) {
-                        Text("Default: \(providerImpls[provider]?.defaultBaseURL ?? "")")
-                            .padding()
-                            .frame(maxWidth: 280)
-                    }
-                    Button {
-                        baseURL = providerImpls[provider]?.defaultBaseURL ?? baseURL
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Reset to default endpoint")
-                    .disabled(baseURL == (providerImpls[provider]?.defaultBaseURL ?? baseURL))
-                }
-            }
+            EndpointSection(
+                baseURL: $baseURL,
+                defaultBaseURL: impl?.defaultBaseURL ?? "",
+                autoBaseURL: impl?.autoBaseURL ?? false,
+                errorMessage: baseURLError
+            )
 
-            if !(providerImpls[provider]?.availableModels.isEmpty ?? true) {
-                Section("Model") {
-                    HStack {
-                        TextField("Model name", text: $model)
-                            .textFieldStyle(.roundedBorder)
-                            .autocorrectionDisabled(true)
-                        if let presets = providerImpls[provider]?.availableModels, !presets.isEmpty {
-                            Menu {
-                                ForEach(presets, id: \.self) { preset in
-                                    Button(preset) { model = preset }
-                                }
-                            } label: {
-                                Image(systemName: "list.bullet")
-                            }
-                            .menuStyle(.borderlessButton)
-                            .frame(width: 30)
-                        }
-                    }
-                }
-            }
+            ModelSection(model: $model, presets: impl?.availableModels ?? [])
 
-            if provider == .googleCloud {
-                Section("HTTP Referer (optional)") {
-                    TextField("https://your-allowed-referer/", text: $referer)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled(true)
-                    Text("Use this if your API key has 'HTTP referrers' restriction set in Google Cloud Console.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
+            ProviderExtraFields(provider: provider, referer: $referer, region: $region)
 
-            if provider == .microsoftTranslator {
-                Section("Region (optional)") {
-                    TextField("e.g. eastus", text: $region)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled(true)
-                    Text("Required for multi-service or regional Azure resources. Leave empty for global free-tier (F0) resources.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Fallback") {
-                LabeledContent("If \(provider.rawValue) fails") {
-                    Picker("", selection: Binding(
-                        get: { store.fallback(for: provider) },
-                        set: { store.setFallback($0, for: provider) }
-                    )) {
-                        Text("Don't fall back").tag(Optional<ProviderType>.none)
-                        ForEach(ProviderType.allCases.filter { $0 != provider }, id: \.self) { type in
-                            Text(type.rawValue).tag(Optional(type))
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 200)
-                }
-                Text("Triggered on 429 (rate limit), 5xx (server error), and network errors.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            FallbackSection(store: store, provider: provider)
 
             Section {
                 HStack {
@@ -260,6 +82,7 @@ private struct ProviderDetailView: View {
                     Button("Save") { saveAll() }
                         .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
+                        .disabled(baseURLError != nil)
                 }
                 .animation(.easeInOut(duration: 0.2), value: savedFlash)
             }
@@ -267,6 +90,33 @@ private struct ProviderDetailView: View {
         .formStyle(.grouped)
         .onAppear { reload() }
         .onDisappear { savedFlashTask?.cancel() }
+    }
+
+    private var headerSection: some View {
+        Section {
+            HStack(spacing: 10) {
+                Image(systemName: provider.sfSymbol)
+                    .font(.system(size: 24))
+                    .foregroundStyle(provider.iconColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.rawValue)
+                        .font(.system(size: 16, weight: .semibold))
+                    Text(supportedOperationsLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if provider == store.activeProvider {
+                    Label("Active", systemImage: "star.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.yellow)
+                } else {
+                    Button("Set as active") { store.activeProvider = provider }
+                }
+            }
+            .padding(.vertical, 4)
+        }
     }
 
     private var supportedOperationsLabel: String {
@@ -287,16 +137,18 @@ private struct ProviderDetailView: View {
     private func clearKey() {
         store.setApiKey("", for: provider)
         apiKeyInput = ""
-        hasKey = false
+        hasKey = store.hasApiKey(for: provider)
     }
 
     private func saveAll() {
+        guard baseURLError == nil else { return }
         let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKey.isEmpty {
             store.setApiKey(trimmedKey, for: provider)
             apiKeyInput = ""
-            hasKey = true
         }
+        // Reflect what is actually stored: setApiKey can fail (see apiKeySaveError).
+        hasKey = store.hasApiKey(for: provider)
         let trimmedReferer = referer.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedRegion = region.trimmingCharacters(in: .whitespacesAndNewlines)
         store.updateSettings(
@@ -313,6 +165,172 @@ private struct ProviderDetailView: View {
         savedFlashTask = Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await MainActor.run { savedFlash = false }
+        }
+    }
+}
+
+// MARK: - Sections
+
+private struct ApiKeySection: View {
+    let requiresKey: Bool
+    let hasKey: Bool
+    @Binding var apiKeyInput: String
+    let saveError: String?
+    let onClear: () -> Void
+
+    var body: some View {
+        if requiresKey {
+            Section("API key") {
+                HStack(spacing: 8) {
+                    Image(systemName: hasKey ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(hasKey ? .green : .secondary)
+                    Text(hasKey ? "A key is stored" : "No key set")
+                        .font(.system(size: 12))
+                    Spacer()
+                    if hasKey {
+                        Button("Clear", action: onClear)
+                    }
+                }
+                SecureField(hasKey ? "Enter a new key to replace" : "Paste your API key", text: $apiKeyInput)
+                    .textFieldStyle(.roundedBorder)
+                if let saveError {
+                    Text(saveError)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+                Text("Stored locally in an encrypted file (AES-GCM, machine-bound).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            Section("API key") {
+                Label("No key needed", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 12))
+            }
+        }
+    }
+}
+
+private struct EndpointSection: View {
+    @Binding var baseURL: String
+    let defaultBaseURL: String
+    let autoBaseURL: Bool
+    let errorMessage: String?
+    @State private var showEndpointHelp = false
+
+    var body: some View {
+        Section("Endpoint") {
+            HStack(spacing: 8) {
+                TextField(autoBaseURL ? "Auto (free/pro chosen by key)" : "Base URL", text: $baseURL)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled(true)
+                Button {
+                    showEndpointHelp = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Show default endpoint")
+                .popover(isPresented: $showEndpointHelp) {
+                    Text(autoBaseURL
+                         ? "Leave blank to choose automatically: keys ending in :fx use api-free.deepl.com, others use \(defaultBaseURL)."
+                         : "Default: \(defaultBaseURL)")
+                        .padding()
+                        .frame(maxWidth: 280)
+                }
+                Button {
+                    baseURL = autoBaseURL ? "" : defaultBaseURL
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Reset to default endpoint")
+                .disabled(baseURL == (autoBaseURL ? "" : defaultBaseURL))
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+                    .font(.caption)
+            }
+        }
+    }
+}
+
+private struct ModelSection: View {
+    @Binding var model: String
+    let presets: [String]
+
+    var body: some View {
+        if !presets.isEmpty {
+            Section("Model") {
+                HStack {
+                    TextField("Model name", text: $model)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled(true)
+                    Menu {
+                        ForEach(presets, id: \.self) { preset in
+                            Button(preset) { model = preset }
+                        }
+                    } label: {
+                        Image(systemName: "list.bullet")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 30)
+                }
+            }
+        }
+    }
+}
+
+private struct ProviderExtraFields: View {
+    let provider: ProviderType
+    @Binding var referer: String
+    @Binding var region: String
+
+    var body: some View {
+        if provider == .googleCloud {
+            Section("HTTP Referer (optional)") {
+                TextField("https://your-allowed-referer/", text: $referer)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled(true)
+                Text("Use this if your API key has 'HTTP referrers' restriction set in Google Cloud Console.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+
+        if provider == .microsoftTranslator {
+            Section("Region (optional)") {
+                TextField("e.g. eastus", text: $region)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled(true)
+                Text("Required for multi-service or regional Azure resources. Leave empty for global free-tier (F0) resources.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct FallbackSection: View {
+    @ObservedObject var store: SettingsStore
+    let provider: ProviderType
+
+    var body: some View {
+        Section("Fallback") {
+            LabeledContent("If \(provider.rawValue) fails") {
+                Picker("", selection: Binding(
+                    get: { store.fallback(for: provider) },
+                    set: { store.setFallback($0, for: provider) }
+                )) {
+                    Text("Don't fall back").tag(Optional<ProviderType>.none)
+                    ForEach(ProviderType.allCases.filter { $0 != provider }, id: \.self) { type in
+                        Text(type.rawValue).tag(Optional(type))
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 200)
+            }
+            Text("Triggered on 429 (rate limit), 5xx (server error), and network errors.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 }

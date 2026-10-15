@@ -50,6 +50,9 @@ final class UsageStore: ObservableObject {
 
     func append(_ record: Record) {
         records.append(record)
+        if let cutoff = Calendar.current.date(byAdding: .day, value: -31, to: Calendar.current.startOfDay(for: Date())) {
+            records.removeAll { $0.timestamp < cutoff }
+        }
         persist()
     }
 
@@ -169,8 +172,9 @@ extension UsageStore.Period {
         let today = cal.startOfDay(for: Date())
         switch self {
         case .day:   return today
-        case .days7: return cal.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-        case .days30: return cal.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        // Same calendar-day buckets as UsageStore.chartBuckets: today plus the previous 6 / 29 days.
+        case .days7: return cal.date(byAdding: .day, value: -6, to: today) ?? today
+        case .days30: return cal.date(byAdding: .day, value: -29, to: today) ?? today
         }
     }
 }
