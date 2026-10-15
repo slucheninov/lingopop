@@ -4,7 +4,7 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## v0.3.15 — 2026-10-15
 
 - **Retry** button is now available on error popups
 - Truncated provider responses are flagged with a banner instead of appending a warning to the text (which could end up pasted into your document)
