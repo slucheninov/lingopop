@@ -4,6 +4,13 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.14 — 2026-10-15
+
+- New **Grok** (xAI) provider: all operations including Screen Translate vision retry; models grok-4.7 / 4.6 / 4.5 / 4.3 and more
+- Refreshed model presets: Claude Fable 5.1 / Opus 5.5 / Sonnet 5.5 / Haiku 5.5, OpenAI GPT-6 Astra / 6.1 Sol / 6 Luna, Gemini 4 Argon / 3.8 Flash
+- Usage cost estimates for the new models
+- New installs default to Claude Haiku 5.5 / GPT-6 Luna / Gemini 3.8 Flash
+
 ## v0.3.12 — 2026-08-17
 
 - Enhance output sanitization in PromptBuilder
