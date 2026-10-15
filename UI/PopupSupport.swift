@@ -45,7 +45,7 @@ private struct PopupButtonHelpModifier: ViewModifier {
                 hoverTask?.cancel()
                 if hovering {
                     hoverTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 500 ms
+                        try? await Task.sleep(nanoseconds: PopupLayout.tooltipDelayNanoseconds)
                         guard !Task.isCancelled, isHovering else { return }
                         showTooltip = true
                     }
@@ -101,7 +101,7 @@ struct RetryMenu: View {
             Menu {
                 ForEach(state.availableRetryProviders, id: \.self) { provider in
                     Button {
-                        state.onRetry?(provider)
+                        state.actions?.retry(with: provider)
                     } label: {
                         Label("Retry with \(provider.rawValue)", systemImage: provider.sfSymbol)
                     }

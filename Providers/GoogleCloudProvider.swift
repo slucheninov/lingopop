@@ -7,6 +7,7 @@ struct GoogleCloudProvider: AIProvider {
     let availableModels: [String] = ["nmt", "base"]
     let requiresApiKey: Bool = true
     let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
+    var settingsFields: [ProviderField] { [.apiKey, .baseURL, .model, .referer] }
 
     private struct RequestBody: Encodable {
         let q: String
@@ -29,8 +30,7 @@ struct GoogleCloudProvider: AIProvider {
         let url = try ProviderHTTP.endpoint(
             baseURL: config.baseURL,
             defaultBaseURL: defaultBaseURL,
-            path: "/language/translate/v2",
-            query: [URLQueryItem(name: "key", value: config.apiKey)]
+            path: "/language/translate/v2"
         )
 
         let body = RequestBody(
@@ -40,7 +40,9 @@ struct GoogleCloudProvider: AIProvider {
             format: "text"
         )
 
-        var headers: [String: String] = [:]
+        // Key travels in a header (documented for Translation v2 at
+        // docs.cloud.google.com/docs/authentication/api-keys-use), never in the URL.
+        var headers: [String: String] = ["X-goog-api-key": config.apiKey]
         if let referer = config.referer, !referer.isEmpty {
             headers["Referer"] = referer
         }

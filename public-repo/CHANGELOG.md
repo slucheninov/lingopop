@@ -4,6 +4,10 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Google Cloud Translation API key is now sent in the `X-goog-api-key` header instead of the URL
+
 ## v0.3.15 — 2026-10-15
 
 - **Retry** button is now available on error popups

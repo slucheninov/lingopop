@@ -5,13 +5,17 @@ import os
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
+    // Members below without `private` are used by the `AppDelegate+PopupActions.swift`
+    // extension (Swift `private` does not cross files).
     private let hotkeyManager = HotkeyManager()
-    private let translationService = TranslationService()
-    private let popup = PopupWindow()
-    private let settingsStore = SettingsStore()
+    let translationService = TranslationService()
+    /// Created lazily so it can be handed `self` as its (weakly held) `PopupActions`.
+    /// This is the only place the popup is wired to its actions.
+    lazy var popup = PopupWindow(actions: self)
+    let settingsStore = SettingsStore()
     private let historyStore = TranslationHistoryStore()
     private let usageStore = UsageStore()
-    private let statusController = StatusItemController()
+    let statusController = StatusItemController()
     private lazy var operationRunner = OperationRunner(
         settingsStore: settingsStore,
         translationService: translationService
@@ -22,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         providerImpls: translationService.providers
     )
     private lazy var historyWindow = HistoryWindowController(store: historyStore)
-    private let log = Logger(subsystem: "com.lingopop.app", category: "AppDelegate")
+    let log = Logger(subsystem: "com.lingopop.app", category: "AppDelegate")
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -35,32 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         migrateLegacyDevConfigIfNeeded()
         translationService.usageStore = usageStore
         observeSettings()
-        popup.state.onRetry = { [weak self] provider in
-            self?.retryWith(provider)
-        }
-        popup.state.onReplace = { [weak self] text in
-            self?.replaceSelectedText(with: text)
-        }
-        popup.state.onRetranslate = { [weak self] language in
-            self?.retranslateWith(language)
-        }
-        popup.state.onRewrite = { [weak self] text in
-            self?.rewriteResult(text)
-        }
-        popup.state.onExplain = { [weak self] text in
-            self?.explainResult(text)
-        }
-        popup.state.onTranslate = { [weak self] text, provider in
-            self?.translateScreenOCR(text, provider: provider)
-        }
-        popup.onClose = { [weak self] in
-            self?.lastCapturedText = nil
-            self?.lastCapturedImage = nil
-        }
         UpdateChecker.shared.startPeriodicChecks()
     }
 
-    private enum Timing {
+    enum Timing {
         /// Delay to restore focus before screen capture
         static let focusRestoreDelay: UInt64 = 150_000_000  // 150ms
         /// Delay after closing popup before paste (covers close animation)
@@ -69,17 +51,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         static let clipboardRestoreDelay: UInt64 = 150_000_000 // 150ms
     }
 
-    private var lastCapturedText: String?
-    private var lastCursorPosition: NSPoint?
-    private var lastDetectedSource: String?
-    private var lastTargetLanguage: String?
-    private var lastOperation: AIOperation = .translate
-    private var lastCapturedImage: NSImage?
+    // Session state of the last operation (Retry / Rewrite / Explain re-run from it).
+    var lastCapturedText: String?
+    var lastCursorPosition: NSPoint?
+    var lastDetectedSource: String?
+    var lastTargetLanguage: String?
+    var lastOperation: AIOperation = .translate
+    var lastCapturedImage: NSImage?
     private var currentScreenTranslateTask: Task<Void, Never>?
     private var screenTranslateToken: UUID?
     private var currentOperationTask: Task<Void, Never>?
     private var operationTaskToken: UUID?
-    private var previousApp: NSRunningApplication?
+    var previousApp: NSRunningApplication?
 
     private func observeSettings() {
         settingsStore.$hotkeys
@@ -299,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Runs `body` as the single tracked operation task. Any previous operation is
     /// cancelled first; an identity token makes sure the old task's cleanup never
     /// clears the handle of the new one.
-    private func startOperationTask(_ body: @escaping @MainActor () async -> Void) {
+    func startOperationTask(_ body: @escaping @MainActor () async -> Void) {
         currentOperationTask?.cancel()
         let token = UUID()
         operationTaskToken = token
@@ -330,9 +313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.log.info("Captured: \(captured.text, privacy: .private)")
                 let limit = self.settingsStore.maxInputChars
                 if limit > 0, captured.text.count > limit {
-                    self.statusController.apply(.error)
-                    self.popup.state.setError("Text is \(captured.text.count) characters, max is \(limit). Adjust in Settings → Main.")
-                    self.popup.show(near: captured.cursorPosition)
+                    self.presentFailure(
+                        PopupError(message: "Text is \(captured.text.count) characters, max is \(limit). Adjust in Settings → Main."),
+                        near: captured.cursorPosition
+                    )
                     return
                 }
                 let detectedSource = operation == .translate ? LanguageDetector.detect(captured.text) : nil
@@ -349,10 +333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } catch is CancellationError {
                 return
             } catch {
-                // TextCaptureError provides user-facing text via LocalizedError.
-                self.statusController.apply(.error)
-                self.popup.state.setError(error.localizedDescription)
-                self.popup.show(near: NSEvent.mouseLocation)
+                self.presentFailure(error, near: NSEvent.mouseLocation)
             }
         }
     }
@@ -403,18 +384,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 } catch is CancellationError {
                     return
                 } catch {
-                    statusController.apply(.error)
                     let retryProviders = visionCapableProviders()
-                    let reason: String
-                    if case ScreenOCRError.noTextFound = error {
-                        reason = retryProviders.isEmpty
-                            ? "No text found in the selected area. Try a larger selection."
-                            : "No text found in the selected area. Try a larger selection or use Retry to send the image to AI."
-                    } else {
-                        reason = error.localizedDescription
+                    var failure = PopupError.from(error)
+                    if case ScreenOCRError.noTextFound = error, !retryProviders.isEmpty {
+                        failure = PopupError(message: ScreenOCRError.noTextFoundRetryHint)
                     }
-                    popup.state.setError(reason)
-                    popup.state.availableRetryProviders = retryProviders
+                    presentFailure(failure, retryProviders: retryProviders)
                     return
                 }
 
@@ -437,23 +412,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 popup.state.activeTranslateProvider = settingsStore.activeProvider
             } catch CaptureOverlayError.cancelled {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
-            } catch ScreenCaptureError.tooSmall {
-                previousApp?.activate(options: .activateIgnoringOtherApps)
-                statusController.apply(.error)
-                popup.state.setError("Selection is too small. Try selecting a larger area.")
-                popup.show(near: NSEvent.mouseLocation)
             } catch is CancellationError {
                 return
             } catch {
                 previousApp?.activate(options: .activateIgnoringOtherApps)
-                statusController.apply(.error)
-                popup.state.setError(error.localizedDescription)
-                popup.show(near: NSEvent.mouseLocation)
+                presentFailure(error, near: NSEvent.mouseLocation)
             }
         }
     }
 
-    private func runOperation(
+    func runOperation(
         operation: AIOperation,
         text: String,
         cursorPosition: NSPoint,
@@ -491,22 +459,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch is CancellationError {
             // Superseded by a newer operation, which owns the popup now.
             return
-        } catch let primaryError as TranslationError {
-            statusController.apply(.error)
-            if case .missingApiKey = primaryError {
-                popup.state.setError("API key missing for \(primary.rawValue). Open Settings → Providers to add one.")
-            } else {
-                popup.state.setError(primaryError)
-            }
-            popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
         } catch {
-            statusController.apply(.error)
-            popup.state.setError(error.localizedDescription)
-            popup.state.availableRetryProviders = retryProviders(excluding: primary, for: operation)
+            let failure: PopupError
+            if case TranslationError.missingApiKey = error {
+                failure = PopupError(message: "API key missing for \(primary.rawValue). Open Settings → Providers to add one.")
+            } else {
+                failure = PopupError.from(error)
+            }
+            presentFailure(failure, retryProviders: retryProviders(excluding: primary, for: operation))
         }
     }
 
-    private func present(result: TranslationResult, source: String?, viaFallback: Bool) {
+    /// Shows `failure` in the popup (error status icon, optional Retry providers and,
+    /// when `anchor` is given, the popup itself). The single error-presentation path.
+    func presentFailure(_ failure: PopupError, retryProviders: [ProviderType] = [], near anchor: NSPoint? = nil) {
+        statusController.apply(.error)
+        popup.state.setError(failure)
+        popup.state.availableRetryProviders = retryProviders
+        if let anchor { popup.show(near: anchor) }
+    }
+
+    /// Maps any error through `PopupError.from`. `CancellationError` is never presented.
+    func presentFailure(_ error: Error, retryProviders: [ProviderType] = [], near anchor: NSPoint? = nil) {
+        guard !(error is CancellationError) else { return }
+        presentFailure(PopupError.from(error), retryProviders: retryProviders, near: anchor)
+    }
+
+    func present(result: TranslationResult, source: String?, viaFallback: Bool) {
         if result.operation == .screenTranslate, settingsStore.autoCopyOCR {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(result.translated, forType: .string)
@@ -535,7 +514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func visionCapableProviders(excluding: ProviderType? = nil) -> [ProviderType] {
+    func visionCapableProviders(excluding: ProviderType? = nil) -> [ProviderType] {
         ProviderType.allCases.filter { type in
             guard type != excluding else { return false }
             guard let impl = translationService.providers[type] else { return false }
@@ -554,185 +533,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard impl.supportedOperations.contains(operation) else { return false }
         if !impl.requiresApiKey { return true }
         return settingsStore.hasApiKey(for: provider)
-    }
-
-    private func retryWith(_ provider: ProviderType) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
-        let operation = lastOperation
-
-        if operation == .screenTranslate, let nsImage = lastCapturedImage {
-            startOperationTask {
-                guard let impl = self.translationService.providers[provider], impl.supportsVision else { return }
-                let config = self.settingsStore.config(for: provider, overrideTargetLanguage: target)
-                self.statusController.apply(.translating)
-                self.popup.state.setLoading(operation: .screenTranslate, original: "")
-                do {
-                    guard let jpegData = self.jpegData(from: nsImage) else {
-                        throw TranslationError.emptyResponse
-                    }
-                    let providerResult = try await impl.executeVision(image: jpegData, targetLanguage: target, config: config)
-                    self.translationService.recordUsage(providerResult.usage, provider: provider, model: config.model, operation: .screenTranslate)
-                    let result = TranslationResult(
-                        original: self.lastCapturedText ?? "",
-                        translated: providerResult.text,
-                        targetLanguage: target,
-                        provider: provider,
-                        operation: .screenTranslate,
-                        truncated: providerResult.truncated
-                    )
-                    self.present(result: result, source: self.lastDetectedSource, viaFallback: false)
-                } catch is CancellationError {
-                    return
-                } catch let error as TranslationError {
-                    self.statusController.apply(.error)
-                    self.popup.state.setError(error)
-                    self.popup.state.availableRetryProviders = self.visionCapableProviders(excluding: provider)
-                } catch {
-                    self.statusController.apply(.error)
-                    self.popup.state.setError(error.localizedDescription)
-                    self.popup.state.availableRetryProviders = self.visionCapableProviders(excluding: provider)
-                }
-            }
-            return
-        }
-
-        guard let text = lastCapturedText else { return }
-        startOperationTask {
-            await self.runOperation(
-                operation: operation,
-                text: text,
-                cursorPosition: cursor,
-                detectedSource: self.lastDetectedSource,
-                targetLanguage: target,
-                primary: provider,
-                allowFallback: false
-            )
-        }
-    }
-
-    private func jpegData(from image: NSImage) -> Data? {
-        guard let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
-    }
-
-    private func translateScreenOCR(_ text: String, provider: ProviderType) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
-        let source = lastDetectedSource
-        startOperationTask {
-            await self.runOperation(
-                operation: .screenTranslate,
-                text: text,
-                cursorPosition: cursor,
-                detectedSource: source,
-                targetLanguage: target,
-                primary: provider,
-                allowFallback: provider == self.settingsStore.activeProvider
-            )
-        }
-    }
-
-    private func rewriteResult(_ text: String) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
-        startOperationTask {
-            await self.runOperation(
-                operation: .rewrite,
-                text: text,
-                cursorPosition: cursor,
-                detectedSource: nil,
-                targetLanguage: target,
-                primary: self.settingsStore.activeProvider,
-                allowFallback: true
-            )
-        }
-    }
-
-    private func explainResult(_ text: String) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
-        startOperationTask {
-            await self.runOperation(
-                operation: .explain,
-                text: text,
-                cursorPosition: cursor,
-                detectedSource: nil,
-                targetLanguage: target,
-                primary: self.settingsStore.activeProvider,
-                allowFallback: true
-            )
-        }
-    }
-
-    private func retranslateWith(_ targetLanguage: String) {
-        guard let text = lastCapturedText,
-              let cursor = lastCursorPosition else { return }
-        startOperationTask {
-            await self.runOperation(
-                operation: .translate,
-                text: text,
-                cursorPosition: cursor,
-                detectedSource: self.lastDetectedSource,
-                targetLanguage: targetLanguage,
-                primary: self.settingsStore.activeProvider,
-                allowFallback: true
-            )
-        }
-    }
-
-    private func replaceSelectedText(with text: String) {
-        let pasteboard = NSPasteboard.general
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        let ownChangeCount = PasteboardSnapshot.writeTemporary(text, to: pasteboard)
-        let targetApp = previousApp
-        let errorAnchor = lastCursorPosition ?? NSEvent.mouseLocation
-        popup.close()
-        statusController.apply(.idle)
-        startOperationTask {
-            var pasted = false
-            defer {
-                // Only restore the user's clipboard if nobody wrote to it since our write.
-                if pasteboard.changeCount == ownChangeCount {
-                    if pasted {
-                        snapshot.restore(to: pasteboard)
-                    } else {
-                        // Paste failed or was cancelled: leave the text as a normal
-                        // (non-transient) clipboard entry so the user can paste manually.
-                        pasteboard.clearContents()
-                        pasteboard.setString(text, forType: .string)
-                    }
-                }
-            }
-            do {
-                try await Task.sleep(nanoseconds: Timing.pasteDelay)
-                guard let targetApp, await self.activateAndConfirm(targetApp) else {
-                    self.statusController.apply(.error)
-                    self.popup.state.setError("Couldn't switch back to the original app, so nothing was replaced. The text is on your clipboard; paste it manually with ⌘V.")
-                    self.popup.show(near: errorAnchor)
-                    return
-                }
-                KeyboardSimulator.simulateCommandV()
-                pasted = true
-                try await Task.sleep(nanoseconds: Timing.clipboardRestoreDelay)
-            } catch {
-                // Cancelled. If the paste already went out, `pasted` restores the clipboard.
-                return
-            }
-        }
-    }
-
-    /// Activates `app` and polls (up to ~300 ms) until it is actually frontmost.
-    private func activateAndConfirm(_ app: NSRunningApplication) async -> Bool {
-        let pid = app.processIdentifier
-        app.activate(options: .activateIgnoringOtherApps)
-        let deadline = Date().addingTimeInterval(0.3)
-        while Date() < deadline {
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid { return true }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
     }
 
     private func resolveTargetLanguage(detectedSource: String?) -> String {

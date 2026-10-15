@@ -97,7 +97,7 @@ End-to-end setup is in `RELEASING.md`.
 2. **AppDelegate.handleHotkey(operation:)** captures selected text via **TextCapture** (`Core/TextCapture.swift`): save pasteboard → post `Cmd+C` as a `CGEvent` → poll pasteboard changeCount until it ticks or 300 ms timeout → restore original pasteboard. This is the reason Accessibility permission is required.
 3. **resolveTargetLanguage** runs `LanguageDetector` (`NLLanguageRecognizer`) on the captured text if `useAutoDetect` is on, then looks the detected source up in `settingsStore.languagePairs` to pick a target; falls back to `targetLanguage` otherwise. Only `.translate` triggers auto-detect.
 4. **runOperation** picks the active provider, builds a `ProviderConfig`, calls `TranslationService.execute(text:operation:config:)`. If the call throws an error that `shouldRetryWithFallback` deems retry-able (429, 5xx, network), it retries once with `settingsStore.fallback(for: primary)` and marks the result `viaFallback = true`.
-5. The result is shown in **PopupWindow** (a borderless `NSPanel` floating above all apps) hosting **PopupView** (SwiftUI). Copy / Replace / Retry-with-other-provider live on `PopupState`. Replace puts the text on the pasteboard and posts `Cmd+V` to the previously focused app.
+5. The result is shown in **PopupWindow** (a borderless `NSPanel` floating above all apps) hosting **PopupView** (SwiftUI). Copy / Replace / Retry-with-other-provider are `PopupActions` protocol methods (`UI/PopupActions.swift`) implemented by `AppDelegate` in `App/AppDelegate+PopupActions.swift`; `PopupState.actions` holds the delegate weakly and is set once through `PopupWindow(actions:)`. Replace puts the text on the pasteboard and posts `Cmd+V` to the previously focused app.
 
 **Screen Translate lifecycle** (`AppDelegate.handleScreenTranslateHotkey()`):
 1. Record `previousApp` (frontmost app before overlay), then call `CaptureOverlayWindow.runSelection()` — creates one `NSPanel` per screen (handles mixed Retina/non-Retina setups), tracks mouse via `NSEvent.addLocalMonitorForEvents` in global AppKit coordinates. Returns the selection rect in global screen coords or throws `CaptureOverlayError.cancelled`.
@@ -119,20 +119,25 @@ protocol AIProvider {
     var requiresApiKey: Bool { get }                  // default true
     var supportedOperations: Set<AIOperation> { get } // default: all ops
     var supportsVision: Bool { get }                  // default false; true for Claude/OpenAI/Gemini/Grok
-    func execute(text:operation:config:) async throws -> String
+    var autoBaseURL: Bool { get }                     // default false; DeepL true
+    var settingsFields: [ProviderField] { get }       // default [.apiKey, .baseURL, .model]
+    func execute(text:operation:config:) async throws -> ProviderResult
+    func executeVision(image:targetLanguage:config:) async throws -> ProviderResult  // default throws operationNotSupported; implemented by vision-capable providers
 }
 ```
+
+`settingsFields` (a `[ProviderField]`: `.apiKey`, `.baseURL`, `.model`, `.referer`, `.region`) drives which fields the Providers tab renders. The default is apiKey/baseURL/model, with `.apiKey` omitted when `requiresApiKey == false`; Google Cloud adds `.referer` and Microsoft uses `[.apiKey, .baseURL, .region]`. `autoBaseURL` means an empty base URL is valid and the endpoint is chosen automatically: DeepL (`true`) picks free vs pro by the key suffix `:fx`.
 
 - **ClaudeProvider** (`/v1/messages`), **OpenAIProvider** (`/v1/chat/completions`), **GeminiProvider** (`/v1beta/models/{model}:generateContent`) handle all operations including `.screenTranslate`, and declare `supportsVision = true` — they can receive the captured image directly and do combined OCR + translation in one step.
 - **GrokProvider** (`Providers/GrokProvider.swift`) — xAI, OpenAI-compatible `/v1/chat/completions` at `api.x.ai`. It is not a separate type: `OpenAIProvider` takes `type` / `defaultBaseURL` / `availableModels` as init parameters and `OpenAIProvider.grok` is a preconfigured instance. All operations supported, `supportsVision = true`.
 - **GoogleFreeProvider** uses the unofficial `translate.googleapis.com/translate_a/single` endpoint — no API key, supports `.translate` and `.screenTranslate` (text-only).
-- **GoogleCloudProvider** uses the official Cloud Translation v2 API (`?key=...`) — supports `[.translate, .screenTranslate]`. Supports an optional `Referer` header for keys with HTTP-referrer restriction.
+- **GoogleCloudProvider** uses the official Cloud Translation v2 API — supports `[.translate, .screenTranslate]`. The API key is sent in the `X-goog-api-key` header (not in the URL as `?key=`). Supports an optional `Referer` header for keys with HTTP-referrer restriction, still sent as before. Note: Google's docs do not confirm how HTTP-referrer-restricted keys behave with the header; if such keys are rejected, revert to `?key=`.
 - **DeepLProvider** and **MicrosoftTranslatorProvider** — translate + Screen Translate (no chat-style operations).
 - **`ProviderHTTP`** (`Providers/ProviderHTTP.swift`) — shared HTTP helper used by every provider: one shared `URLSession` (30 s request / 60 s resource timeouts), refusal of cross-origin redirects (so API keys never follow a redirect to another host), https-only base URL check, and JSON request-building / typed-decoding helpers. New providers should go through it instead of building their own session.
 
 `TranslationService` (`Core/TranslationService.swift`) just holds the dict `[ProviderType: AIProvider]` and forwards calls. It also exposes the dict to the UI so the Provider tab can render model presets and supportedOperations badges per provider.
 
-When adding a new provider: add a case to `ProviderType` (`Models/ProviderConfig.swift`), implement `AIProvider`, register it in `TranslationService.providers`, and add a default entry in `SettingsStore.makeDefault()` so it has a baseURL/model on first launch.
+When adding a new provider: add a case to `ProviderType` (`Models/ProviderConfig.swift`), implement `AIProvider` (override `settingsFields` if the provider needs anything other than the default apiKey/baseURL/model fields, e.g. `.referer` or `.region`, so the Providers tab shows the right fields), register it in `TranslationService.providers`, and add a default entry in `SettingsStore.makeDefault()` so it has a baseURL/model on first launch.
 
 ### Persistence layout
 
@@ -153,7 +158,7 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - `App/LingoPop.swift` is the `@main` entry: creates `AppDelegate`, sets `.accessory` activation policy.
 - `AppDelegate` is `@MainActor`, holds all the singletons (settingsStore, historyStore, popup, statusController, hotkeyManager, translationService), subscribes via Combine to `settingsStore.$hotkeys`, `$launchAtLogin`, `$iCloudSync`, `$maxHistoryCount` to keep dependent systems in sync.
 - `installMainMenu()` builds a fake `NSApp.mainMenu` with App + Edit menus. Even though the app has no windows by default, this is required so `Cmd+V` etc. work in TextField inside Settings (LSUIElement apps don't get a main menu by default → no responder chain → no Cmd+V).
-- **PopupWindow** uses an `NSPanel` with `.borderless + .nonactivatingPanel` so it floats over the user's current app without stealing focus. Click-outside / Esc closes it via `NSEvent.addGlobalMonitorForEvents` + a local key monitor.
+- **PopupWindow** uses an `NSPanel` with `.borderless + .nonactivatingPanel` so it floats over the user's current app without stealing focus. Click-outside / Esc closes it via `NSEvent.addGlobalMonitorForEvents` + a local key monitor. The panel hosts an `NSHostingController` with `sizingOptions = [.preferredContentSize]`, so it resizes itself when the SwiftUI content changes; `position(_:near:)` falls back to `preferredContentSize` / a default size (`PopupLayout`) if `fittingSize` is zero.
 - **StatusItemController** swaps the menu-bar icon between idle (globe), translating (spinning arrows), and error (red triangle, auto-resets after 3 s).
 - **HotkeyRecorderField** (`UI/HotkeyRecorderField.swift`) is an `NSViewRepresentable` wrapping a custom `NSButton` that intercepts `keyDown` while recording, builds a `HotkeyConfig` from the `event.keyCode` and modifier flags.
 
@@ -164,6 +169,11 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - **`UI/PermissionAlert.swift`** — shared Accessibility / Screen Recording alerts.
 - **`UI/ProviderType+UI.swift`** — UI-facing helpers on `ProviderType` (display names, colors, ordering) so views don't duplicate provider lists.
 - **`Providers/ProviderHTTP.swift`** — see Providers above.
+- **`Models/UserFacingError.swift`** — protocol for all user-visible error enums (`userSummary`, optional `userDetail`).
+- **`Models/TranslationError.swift`** — `TranslationError`, `FallbackInfo`, `redactedURL`, `sanitizedHTTPBodyDetail` (split out of `TranslationResult.swift`).
+- **`UI/PopupError.swift`** — `PopupError.from(_:)`, the single mapper from any `Error` to popup content. `CancellationError` is never presented; callers drop it before mapping.
+- **`UI/PopupLayout.swift`** — popup geometry and timing constants.
+- **`UI/PopupActions.swift`** — the `PopupActions` protocol (retry, replace, retranslate, rewrite, explain, translateOCR, popupDidClose); see the lifecycle section above.
 
 ### Code audits
 
@@ -179,7 +189,7 @@ Past audits and their per-finding status: [docs/code-audit-2026-06-12.md](docs/c
 
 ### Settings UI structure
 
-`SettingsView` is a `TabView` with six tabs: Main, Providers, Shortcuts, Usage, Magic, About (files under `UI/Settings/` plus `UI/Settings/UsageSettingsTab.swift`). The Providers tab is an `HStack` with a sidebar `List(selection:)` on the left and a per-provider detail form on the right (System Settings → Internet Accounts pattern). The "Active" provider is set with a dedicated button, distinct from "selected for editing in the sidebar" — these are intentionally separate concepts.
+`SettingsView` is a `TabView` with six tabs: Main, Providers, Shortcuts, Usage, Magic, About (files under `UI/Settings/` plus `UI/Settings/UsageSettingsTab.swift`). The Providers tab is an `HStack` with a sidebar `List(selection:)` on the left and a per-provider detail form on the right (System Settings → Internet Accounts pattern). The "Active" provider is set with a dedicated button, distinct from "selected for editing in the sidebar" — these are intentionally separate concepts. Editable form state lives in `UI/Settings/ProviderDraft.swift` (`trimmed()` / `validate(for:)` / `apply(to:provider:)`), and the per-provider detail sections are in `UI/Settings/ProviderDetailSections.swift`; the fields shown come from `AIProvider.settingsFields`.
 
 ## Things to be careful about
 

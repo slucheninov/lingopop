@@ -9,18 +9,20 @@ struct PopupView: View {
     @AppStorage(PopupPrefs.fontSizeKey) private var popupFontSize: Double = PopupPrefs.defaultFontSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PopupLayout.stackSpacing) {
             dragHandle
             content
         }
-        .padding(14)
-        .frame(width: dynamicWidth, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(PopupLayout.contentPadding)
+        .frame(width: layout.dynamicWidth(for: state.phase), alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PopupLayout.cornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: PopupLayout.cornerRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
     }
+
+    private var layout: PopupLayout { PopupLayout(fontSize: popupFontSize) }
 
     private var dragHandle: some View {
         HStack {
@@ -50,29 +52,11 @@ struct PopupView: View {
         }
     }
 
-    private var headerFontSize: CGFloat { max(8, CGFloat(popupFontSize) - 2) }
-
-    private var dynamicWidth: CGFloat {
-        let minW = max(320, headerFontSize * 30)
-        let text: String
-        switch state.phase {
-        case .result(let result): text = result.translated
-        case .ocr(let t): text = t
-        default: return minW
-        }
-        let chars = CGFloat(text.count)
-        let fontFactor = CGFloat(popupFontSize) / 13.0
-        return min(700, max(minW, 200 + chars * fontFactor))
-    }
 }
 
 private func copyToPasteboard(_ text: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
-}
-
-private func headerFontSize(for fontSize: Double) -> CGFloat {
-    max(8, CGFloat(fontSize) - 2)
 }
 
 // MARK: - Loading
@@ -106,7 +90,7 @@ private struct OCRContent: View {
     let fontSize: Double
 
     var body: some View {
-        let header = headerFontSize(for: fontSize)
+        let header = PopupLayout(fontSize: fontSize).headerFontSize
         HStack(spacing: 4) {
             Image(systemName: "text.viewfinder")
                 .font(.system(size: header, weight: .semibold))
@@ -132,7 +116,7 @@ private struct OCRContent: View {
             Button(action: {
                 let provider = state.activeTranslateProvider ?? state.availableTranslateProviders.first
                 guard let provider else { return }
-                state.onTranslate?(text, provider)
+                state.actions?.translateOCR(text, with: provider)
             }) {
                 Label("Translate", systemImage: "globe")
             }
@@ -144,7 +128,7 @@ private struct OCRContent: View {
                 Menu {
                     ForEach(state.availableTranslateProviders, id: \.self) { provider in
                         Button {
-                            state.onTranslate?(text, provider)
+                            state.actions?.translateOCR(text, with: provider)
                         } label: {
                             HStack {
                                 Label(provider.rawValue, systemImage: provider.sfSymbol)
@@ -202,7 +186,7 @@ private struct ResultHeader: View {
     let fontSize: Double
 
     var body: some View {
-        let header = headerFontSize(for: fontSize)
+        let header = PopupLayout(fontSize: fontSize).headerFontSize
         HStack(spacing: 6) {
             HStack(spacing: 4) {
                 Image(systemName: result.provider.sfSymbol)
@@ -214,7 +198,7 @@ private struct ResultHeader: View {
                     Menu {
                         ForEach(languageOptions(current: result.targetLanguage), id: \.self) { lang in
                             Button {
-                                state.onRetranslate?(lang)
+                                state.actions?.retranslate(to: lang)
                             } label: {
                                 if lang == result.targetLanguage {
                                     Label(lang, systemImage: "checkmark")
@@ -290,15 +274,15 @@ private struct ResultActionBar: View {
             PopupActionButton(title: "Copy", systemImage: "doc.on.doc") { copyToPasteboard(result.translated) }
             if result.operation != .screenTranslate {
                 PopupActionButton(title: "Replace", systemImage: "arrow.uturn.left") {
-                    state.onReplace?(result.translated)
+                    state.actions?.replace(with: result.translated)
                 }
             }
             PopupActionButton(title: "Rewrite", systemImage: "wand.and.stars") {
-                state.onRewrite?(result.translated)
+                state.actions?.rewrite(result.translated)
             }
             if result.operation != .explain {
                 PopupActionButton(title: "Explain", systemImage: "text.magnifyingglass") {
-                    state.onExplain?(result.translated)
+                    state.actions?.explain(result.translated)
                 }
             }
             Spacer(minLength: 0)

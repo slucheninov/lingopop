@@ -1,14 +1,18 @@
 import Foundation
 import Vision
 
-enum ScreenOCRError: LocalizedError {
+enum ScreenOCRError: UserFacingError {
     case noTextFound
     case recognitionFailed(Error)
 
-    var errorDescription: String? {
+    /// Shown instead of the plain `noTextFound` summary when vision-capable
+    /// providers are available for a Retry.
+    static let noTextFoundRetryHint = "No text found in the selected area. Try a larger selection or use Retry to send the image to AI."
+
+    var userSummary: String {
         switch self {
         case .noTextFound:
-            return "No text was recognized in the selected area."
+            return "No text found in the selected area. Try a larger selection."
         case .recognitionFailed(let error):
             return "Text recognition failed: \(error.localizedDescription)"
         }

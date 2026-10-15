@@ -6,6 +6,7 @@ struct MicrosoftTranslatorProvider: AIProvider {
     let defaultBaseURL = "https://api.cognitive.microsofttranslator.com"
     let availableModels: [String] = []
     let supportedOperations: Set<AIOperation> = [.translate, .screenTranslate]
+    var settingsFields: [ProviderField] { [.apiKey, .baseURL, .region] }
 
     private struct RequestItem: Encodable {
         let Text: String

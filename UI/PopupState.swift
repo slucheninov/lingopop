@@ -1,21 +1,6 @@
 import Foundation
 import Combine
 
-struct PopupError: Equatable {
-    let message: String
-    let details: String?
-
-    init(message: String, details: String? = nil) {
-        self.message = message
-        self.details = details
-    }
-
-    init(_ error: TranslationError) {
-        message = error.userSummary
-        details = error.technicalDetails
-    }
-}
-
 @MainActor
 final class PopupState: ObservableObject {
 
@@ -30,16 +15,17 @@ final class PopupState: ObservableObject {
     @Published var availableRetryProviders: [ProviderType] = []
     @Published var availableTranslateProviders: [ProviderType] = []
     @Published var activeTranslateProvider: ProviderType? = nil
-    var onRetry: ((ProviderType) -> Void)?
-    var onReplace: ((String) -> Void)?
-    var onRetranslate: ((String) -> Void)?
-    var onRewrite: ((String) -> Void)?
-    var onExplain: ((String) -> Void)?
-    var onTranslate: ((String, ProviderType) -> Void)?
+
+    /// Weak: the actions object (AppDelegate) owns the popup, not the other way round.
+    private(set) weak var actions: PopupActions?
+
+    init(actions: PopupActions) {
+        self.actions = actions
+    }
 
     func setLoading(operation: AIOperation, original: String) {
         availableRetryProviders = []
-        phase = .loading(operation: operation, originalPreview: String(original.prefix(120)))
+        phase = .loading(operation: operation, originalPreview: String(original.prefix(PopupLayout.previewCharacterLimit)))
     }
 
     func setOCR(_ text: String) {
@@ -55,11 +41,9 @@ final class PopupState: ObservableObject {
         phase = .error(error)
     }
 
-    func setError(_ message: String) {
-        setError(PopupError(message: message))
-    }
-
-    func setError(_ error: TranslationError) {
-        setError(PopupError(error))
+    /// Maps any error through `PopupError.from`. Cancellation is never presented.
+    func setError(_ error: Error) {
+        guard !(error is CancellationError) else { return }
+        setError(PopupError.from(error))
     }
 }

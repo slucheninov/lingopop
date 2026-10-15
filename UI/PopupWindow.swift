@@ -1,6 +1,5 @@
 import AppKit
 import Carbon.HIToolbox
-import Combine
 import SwiftUI
 
 @MainActor
@@ -9,10 +8,18 @@ final class PopupWindow {
     private var panel: NSPanel?
     private var clickMonitor: Any?
     private var keyMonitor: Any?
-    private var phaseCancellable: AnyCancellable?
+    private var resizeObserver: NSObjectProtocol?
     private var isClosing: Bool = false
-    let state = PopupState()
-    var onClose: (() -> Void)?
+    let state: PopupState
+    /// Weak: the actions object (AppDelegate) owns this window.
+    private weak var actions: PopupActions?
+
+    /// The only place where the popup is wired to its actions; a window without
+    /// actions cannot be created.
+    init(actions: PopupActions) {
+        self.actions = actions
+        self.state = PopupState(actions: actions)
+    }
 
     func show(near point: NSPoint) {
         isClosing = false
@@ -35,7 +42,7 @@ final class PopupWindow {
         installEventMonitors()
         if isNewlyVisible {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.18
+                ctx.duration = PopupLayout.fadeInDuration
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().alphaValue = 1
             }
@@ -44,11 +51,11 @@ final class PopupWindow {
 
     func close() {
         removeEventMonitors()
-        onClose?()
+        actions?.popupDidClose()
         guard let panel, panel.isVisible else { return }
         isClosing = true
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.15
+            ctx.duration = PopupLayout.fadeOutDuration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
@@ -61,9 +68,13 @@ final class PopupWindow {
         })
     }
 
+    deinit {
+        if let resizeObserver { NotificationCenter.default.removeObserver(resizeObserver) }
+    }
+
     private func makePanel() -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: PopupLayout.panelWidth, height: PopupLayout.minPanelHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -76,63 +87,56 @@ final class PopupWindow {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
 
-        let host = NSHostingView(rootView: PopupView(state: state, onClose: { [weak self] in
+        // The hosting controller publishes SwiftUI's ideal size as its
+        // `preferredContentSize`, and AppKit resizes the panel to follow it, keeping
+        // the top-left corner fixed (so the popup grows downward). This replaces the
+        // old Combine + `fittingSize` polling, and also reacts to size changes that do
+        // not change `phase` (font size, disclosure groups) and while a Menu is tracking.
+        let hosting = NSHostingController(rootView: PopupView(state: state, onClose: { [weak self] in
             self?.close()
         }))
-        host.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = NSView()
-        container.addSubview(host)
-        NSLayoutConstraint.activate([
-            host.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            host.topAnchor.constraint(equalTo: container.topAnchor),
-            host.bottomAnchor.constraint(equalTo: container.bottomAnchor)
-        ])
-        panel.contentView = container
-
-        phaseCancellable = state.$phase
-            .dropFirst()
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.resizeToFit()
-            }
+        hosting.sizingOptions = [.preferredContentSize]
+        panel.contentViewController = hosting
+        // The shadow of a transparent borderless panel is cached; refresh it on resize.
+        resizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification, object: panel, queue: .main
+        ) { [weak panel] _ in
+            panel?.invalidateShadow()
+        }
 
         return panel
     }
 
-    private func resizeToFit() {
-        guard let panel, panel.isVisible,
-              let newSize = panel.contentView?.fittingSize,
-              newSize != panel.frame.size else { return }
-        var frame = panel.frame
-        let dy = newSize.height - frame.size.height
-        frame.origin.y -= dy
-        frame.size = newSize
-        panel.setFrame(frame, display: true, animate: false)
-        panel.invalidateShadow()
-    }
-
     private func position(_ panel: NSPanel, near point: NSPoint) {
         panel.layoutIfNeeded()
-        let size = panel.contentView?.fittingSize ?? NSSize(width: 360, height: 120)
+        // With only `.preferredContentSize` in sizingOptions the hosting view may report a
+        // zero fittingSize before its first layout pass, so fall back step by step.
+        var size = panel.contentView?.fittingSize ?? .zero
+        if size.width <= 0 || size.height <= 0 {
+            size = panel.contentViewController?.preferredContentSize ?? .zero
+        }
+        if size.width <= 0 || size.height <= 0 {
+            size = NSSize(width: PopupLayout.panelWidth, height: PopupLayout.fallbackPanelHeight)
+        }
         let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) })
             ?? NSScreen.main
             ?? NSScreen.screens.first
         let bounds = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
 
-        var origin = NSPoint(x: point.x + 12, y: point.y - size.height - 12)
+        let offset = PopupLayout.cursorOffset
+        let inset = PopupLayout.screenEdgeInset
+        var origin = NSPoint(x: point.x + offset, y: point.y - size.height - offset)
         if origin.x + size.width > bounds.maxX {
-            origin.x = bounds.maxX - size.width - 8
+            origin.x = bounds.maxX - size.width - inset
         }
         if origin.x < bounds.minX {
-            origin.x = bounds.minX + 8
+            origin.x = bounds.minX + inset
         }
         if origin.y < bounds.minY {
-            origin.y = point.y + 12
+            origin.y = point.y + offset
         }
         if origin.y + size.height > bounds.maxY {
-            origin.y = bounds.maxY - size.height - 8
+            origin.y = bounds.maxY - size.height - inset
         }
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
     }

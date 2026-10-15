@@ -1,10 +1,10 @@
 import AppKit
 import Carbon.HIToolbox
 
-enum CaptureOverlayError: LocalizedError {
+enum CaptureOverlayError: UserFacingError {
     case cancelled
 
-    var errorDescription: String? {
+    var userSummary: String {
         switch self {
         case .cancelled: return "Screen selection was cancelled."
         }

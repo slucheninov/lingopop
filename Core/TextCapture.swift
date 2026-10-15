@@ -5,11 +5,11 @@ struct CapturedText {
     let cursorPosition: NSPoint
 }
 
-enum TextCaptureError: LocalizedError {
+enum TextCaptureError: UserFacingError {
     case emptySelection
     case clipboardTimeout
 
-    var errorDescription: String? {
+    var userSummary: String {
         switch self {
         case .emptySelection:
             return "Nothing selected. Select some text first, then press the hotkey."
