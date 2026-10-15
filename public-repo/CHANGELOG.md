@@ -4,8 +4,12 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## v0.3.16 — 2026-10-15
 
+**Technical release (refactoring).** Mostly internal restructuring with no new features.
+
+- Internal refactoring of the popup actions, the shared error model and the Providers settings tab
+- The popup window now resizes itself together with its content
 - Google Cloud Translation API key is now sent in the `X-goog-api-key` header instead of the URL
 
 ## v0.3.15 — 2026-10-15
