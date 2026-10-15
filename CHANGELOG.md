@@ -4,6 +4,23 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.15 — 2026-10-15
+
+- **Retry** button is now available on error popups
+- Truncated provider responses are flagged with a banner instead of appending a warning to the text (which could end up pasted into your document)
+- Fixed the popup occasionally appearing invisible when re-triggered quickly
+- Fixed **Retry** after Rewrite / Explain re-running the original operation instead of the follow-up one
+- Fixed the Screen Recording permission prompt not appearing on macOS 13 / 14
+- Fixed DeepL free / pro key detection
+- **Replace** now verifies the target app is frontmost before pasting, and only restores your clipboard if it was not changed in the meantime
+- Gemini API key is now sent in a header instead of the URL
+- Provider requests no longer follow redirects to a different host
+- Removed deprecated model presets: gpt-4.1, gpt-4.1-mini, gpt-5.4-nano, claude-haiku-4-5, gemini-3.5-flash
+- Migration for API keys stored by versions before the HKDF change (keys no longer appear saved but unusable)
+- Fixed Norwegian and Chinese language codes for DeepL / Microsoft Translator
+- Removed the unused Apple Events entitlement
+- CI moved to macOS 15 runners with pinned GitHub Actions
+
 ## v0.3.14 — 2026-10-15
 
 - New **Grok** (xAI) provider: all operations including Screen Translate vision retry; models grok-4.7 / 4.6 / 4.5 / 4.3 and more
