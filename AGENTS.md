@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents (Claude Code, Codex, Cursor, etc.) when working with code in this repository. It is the single source of truth for project instructions; `CLAUDE.md` only points here.
 
 ## What this is
 
@@ -10,11 +10,11 @@ LingoPop is a native macOS menu-bar app (Swift / AppKit + SwiftUI). User selects
 - **Fix grammar** — only grammar / spelling / punctuation, preserving language and style
 - **Rewrite** — improve clarity and style while preserving meaning
 - **Explain** — concise explanation of the text (meaning, context, key nuances) in the target language
-- **Screen Translate** — drag a selection over any screen region; Apple Vision OCR extracts the text first (shown as `.ocr` popup phase with Copy + Translate + Retry buttons); pressing Translate runs the AI translation. OCR text is auto-copied to clipboard on recognition; translation result is also auto-copied. Retry sends the captured image directly to a vision-capable provider (Codex, OpenAI, Gemini, Grok) for combined OCR + translation in one step.
+- **Screen Translate** — drag a selection over any screen region; Apple Vision OCR extracts the text first (shown as `.ocr` popup phase with Copy + Translate + Retry buttons); pressing Translate runs the AI translation. OCR text is auto-copied to clipboard on recognition; translation result is also auto-copied. Retry sends the captured image directly to a vision-capable provider (Claude, OpenAI, Gemini, Grok) for combined OCR + translation in one step.
 
 Each operation has its own configurable global hotkey and its own menu-bar item. The popup offers Copy, Replace (paste back into the source app via simulated `Cmd+V`), and Retry-with-other-provider. Replace is hidden for Screen Translate results (can't paste back into an image).
 
-Supported providers: **Codex** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Grok** (xAI, OpenAI-compatible `/v1/chat/completions`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate]`; Codex/OpenAI/Gemini/Grok handle all operations. Codex/OpenAI/Gemini/Grok also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
+Supported providers: **Claude** (`/v1/messages`), **OpenAI** (`/v1/chat/completions`), **Gemini** (`generateContent`), **Grok** (xAI, OpenAI-compatible `/v1/chat/completions`), **Google Free** (unofficial `translate.googleapis.com/translate_a/single` — no API key, translate-only), **Google Translate** (Cloud Translation v2 — translate-only), **DeepL**, **Microsoft Translator**. The Google/DeepL/Microsoft providers explicitly declare `supportedOperations = [.translate]`; Claude/OpenAI/Gemini/Grok handle all operations. Claude/OpenAI/Gemini/Grok also declare `supportsVision = true` and are the only providers eligible for vision-based Screen Translate retry. Each primary provider has a per-provider fallback that fires on retry-able errors (429, 5xx, network).
 
 Requirements: macOS 13.0+, Xcode 15+. The app uses `.accessory` activation policy (no Dock icon, `LSUIElement = YES`), is not sandboxed (needs to post CGEvents and read another app's clipboard via Accessibility, and capture screen content via Screen Recording TCC), and is signed with a self-signed cert.
 
@@ -104,7 +104,7 @@ End-to-end setup is in `RELEASING.md`.
 2. Restore `previousApp` focus and wait 150 ms so any subsequent `simulateCommandC()` goes to the right app (not LingoPop).
 3. `ScreenCapture.capture(rect:)` converts from AppKit coordinates (Y-up, origin at bottom-left) to CG coordinates (Y-down) using `NSScreen.main?.frame.height`, then calls `CGWindowListCreateImage`. Requires Screen Recording TCC permission.
 4. `ScreenOCR.recognize(image:)` runs Apple Vision `VNRecognizeTextRequest` and returns the joined string. If it yields no text, retry providers (vision-capable ones) are offered instead.
-5. Popup shows the `.ocr(text:)` phase: recognized text + Copy / Translate / Retry buttons. OCR text is auto-copied to clipboard. `availableRetryProviders` is set to `visionCapableProviders()` so Retry sends the image directly to Codex/OpenAI/Gemini/Grok.
+5. Popup shows the `.ocr(text:)` phase: recognized text + Copy / Translate / Retry buttons. OCR text is auto-copied to clipboard. `availableRetryProviders` is set to `visionCapableProviders()` so Retry sends the image directly to Claude/OpenAI/Gemini/Grok.
 6. When user taps Translate, `translateScreenOCR(_:)` calls `runOperation(.screenTranslate, ...)`. The translation result is auto-copied to clipboard via `present(result:source:viaFallback:)`.
 
 ### Providers
@@ -118,7 +118,7 @@ protocol AIProvider {
     var availableModels: [String] { get }
     var requiresApiKey: Bool { get }                  // default true
     var supportedOperations: Set<AIOperation> { get } // default: all ops
-    var supportsVision: Bool { get }                  // default false; true for Codex/OpenAI/Gemini/Grok
+    var supportsVision: Bool { get }                  // default false; true for Claude/OpenAI/Gemini/Grok
     func execute(text:operation:config:) async throws -> String
 }
 ```
