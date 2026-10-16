@@ -26,4 +26,29 @@ extension ProviderType {
         case .microsoftTranslator: return Color(red: 0.0, green: 0.643, blue: 0.937)
         }
     }
+
+    /// Public page (rendered by GitHub) explaining how to get an API key for each provider.
+    static let keyGuideBaseURL = "https://github.com/slucheninov/lingopop/blob/main/docs/api-keys.md"
+
+    /// Fixed section anchor in `public-repo/docs/api-keys.md`; the headings there must keep these ids.
+    var keyGuideAnchor: String {
+        switch self {
+        case .claude: return "claude"
+        case .openai: return "openai"
+        case .gemini: return "gemini"
+        case .grok: return "grok"
+        case .googleFree: return "google-free"
+        case .googleCloud: return "google-translate"
+        case .deepl: return "deepl"
+        case .microsoftTranslator: return "microsoft-translator"
+        }
+    }
+
+    /// Deep link to this provider's section of the key guide. Falls back to the page itself,
+    /// then to the repository root, so a malformed string can never crash the settings UI.
+    var keyGuideURL: URL {
+        URL(string: "\(Self.keyGuideBaseURL)#\(keyGuideAnchor)")
+            ?? URL(string: Self.keyGuideBaseURL)
+            ?? URL(fileURLWithPath: "/")
+    }
 }

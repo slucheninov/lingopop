@@ -4,6 +4,10 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.17 — 2026-10-16
+
+- Added an API key setup guide (docs/api-keys.md) linked from each provider's settings tab
+
 ## v0.3.16 — 2026-10-15
 
 **Technical release (refactoring).** Mostly internal restructuring with no new features.

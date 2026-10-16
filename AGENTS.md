@@ -168,6 +168,7 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - **`Core/KeyboardSimulator.swift`** — posts the simulated `Cmd+C` / `Cmd+V` `CGEvent`s; the single place that does so.
 - **`UI/PermissionAlert.swift`** — shared Accessibility / Screen Recording alerts.
 - **`UI/ProviderType+UI.swift`** — UI-facing helpers on `ProviderType` (display names, colors, ordering) so views don't duplicate provider lists.
+- **`ProviderType.keyGuideURL`** (`UI/ProviderType+UI.swift`) deep-links each provider's tab to its section in `public-repo/docs/api-keys.md` (published at github.com/slucheninov/lingopop). Section headings in that file must keep the anchors claude/openai/gemini/grok/google-free/google-translate/deepl/microsoft-translator.
 - **`Providers/ProviderHTTP.swift`** — see Providers above.
 - **`Models/UserFacingError.swift`** — protocol for all user-visible error enums (`userSummary`, optional `userDetail`).
 - **`Models/TranslationError.swift`** — `TranslationError`, `FallbackInfo`, `redactedURL`, `sanitizedHTTPBodyDetail` (split out of `TranslationResult.swift`).

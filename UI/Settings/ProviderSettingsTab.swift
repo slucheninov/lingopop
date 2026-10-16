@@ -44,6 +44,7 @@ private struct ProviderDetailView: View {
                 hasKey: hasKey,
                 apiKeyInput: $draft.apiKey,
                 saveError: store.apiKeySaveError,
+                guideURL: provider.keyGuideURL,
                 onClear: clearKey
             )
 

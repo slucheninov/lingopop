@@ -8,6 +8,7 @@ struct ApiKeySection: View {
     let hasKey: Bool
     @Binding var apiKeyInput: String
     let saveError: String?
+    let guideURL: URL
     let onClear: () -> Void
 
     var body: some View {
@@ -32,14 +33,29 @@ struct ApiKeySection: View {
                 }
                 Text("Stored locally in an encrypted file (AES-GCM, machine-bound).")
                     .font(.caption).foregroundStyle(.secondary)
+                guideLink("How to get an API key")
             }
         } else {
             Section("API key") {
-                Label("No key needed", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
-                    .font(.system(size: 12))
+                HStack(spacing: 8) {
+                    Label("No key needed", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                        .font(.system(size: 12))
+                    Spacer()
+                    guideLink("About this provider (no key needed)")
+                }
             }
         }
+    }
+
+    /// Opens the setup guide in the default browser (`Link` uses NSWorkspace under the hood).
+    private func guideLink(_ title: String) -> some View {
+        Link(destination: guideURL) {
+            Label(title, systemImage: "arrow.up.right.square")
+                .font(.caption)
+        }
+        .foregroundStyle(Color.accentColor)
+        .help("Opens the setup guide in your browser")
     }
 }
 
