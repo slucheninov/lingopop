@@ -12,9 +12,9 @@ enum TextCaptureError: UserFacingError {
     var userSummary: String {
         switch self {
         case .emptySelection:
-            return "Nothing selected. Select some text first, then press the hotkey."
+            return String(localized: "Nothing selected. Select some text first, then press the hotkey.")
         case .clipboardTimeout:
-            return "Clipboard didn't update in time. Try again."
+            return String(localized: "Clipboard didn't update in time. Try again.")
         }
     }
 }

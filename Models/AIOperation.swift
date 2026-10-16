@@ -10,23 +10,23 @@ enum AIOperation: String, Codable, CaseIterable, Hashable {
 
     var displayName: String {
         switch self {
-        case .translate: return "Translate"
-        case .grammarFix: return "Fix grammar"
-        case .rewrite: return "Rewrite"
-        case .explain: return "Explain"
-        case .screenTranslate: return "Screen Translate"
-        case .magic: return "Magic"
+        case .translate: return String(localized: "Translate")
+        case .grammarFix: return String(localized: "Fix grammar")
+        case .rewrite: return String(localized: "Rewrite")
+        case .explain: return String(localized: "Explain")
+        case .screenTranslate: return String(localized: "Screen Translate")
+        case .magic: return String(localized: "Magic")
         }
     }
 
     var shortName: String {
         switch self {
-        case .translate: return "Translation"
-        case .grammarFix: return "Grammar fix"
-        case .rewrite: return "Rewrite"
-        case .explain: return "Explanation"
-        case .screenTranslate: return "Screen Translation"
-        case .magic: return "Magic"
+        case .translate: return String(localized: "Translation")
+        case .grammarFix: return String(localized: "Grammar fix")
+        case .rewrite: return String(localized: "Rewrite")
+        case .explain: return String(localized: "Explanation")
+        case .screenTranslate: return String(localized: "Screen Translation")
+        case .magic: return String(localized: "Magic")
         }
     }
 

@@ -76,7 +76,7 @@ final class RecorderButton: NSButton {
     }
 
     func refreshTitle() {
-        let label = recording ? "Press a key combo…" : config.displayString
+        let label = recording ? String(localized: "Press a key combo…") : config.displayString
         title = label
     }
 }

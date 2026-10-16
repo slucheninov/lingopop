@@ -4,11 +4,11 @@ import AppKit
 extension AppDelegate: PopupActions {
 
     func retry(with provider: ProviderType) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
-        let operation = lastOperation
+        guard let cursor = session.lastCursorPosition,
+              let target = session.lastTargetLanguage else { return }
+        let operation = session.lastOperation
 
-        if operation == .screenTranslate, let nsImage = lastCapturedImage {
+        if operation == .screenTranslate, let nsImage = session.lastCapturedImage {
             startOperationTask {
                 guard let impl = self.translationService.providers[provider], impl.supportsVision else { return }
                 let config = self.settingsStore.config(for: provider, overrideTargetLanguage: target)
@@ -21,28 +21,28 @@ extension AppDelegate: PopupActions {
                     let providerResult = try await impl.executeVision(image: jpegData, targetLanguage: target, config: config)
                     self.translationService.recordUsage(providerResult.usage, provider: provider, model: config.model, operation: .screenTranslate)
                     let result = TranslationResult(
-                        original: self.lastCapturedText ?? "",
+                        original: self.session.lastCapturedText ?? "",
                         translated: providerResult.text,
                         targetLanguage: target,
                         provider: provider,
                         operation: .screenTranslate,
                         truncated: providerResult.truncated
                     )
-                    self.present(result: result, source: self.lastDetectedSource, viaFallback: false)
+                    self.presenter.present(result: result, source: self.session.lastDetectedSource, viaFallback: false)
                 } catch {
-                    self.presentFailure(error, retryProviders: self.visionCapableProviders(excluding: provider))
+                    self.presenter.presentFailure(error, retryProviders: self.presenter.visionCapableProviders(excluding: provider))
                 }
             }
             return
         }
 
-        guard let text = lastCapturedText else { return }
+        guard let text = session.lastCapturedText else { return }
         startOperationTask {
             await self.runOperation(
                 operation: operation,
                 text: text,
                 cursorPosition: cursor,
-                detectedSource: self.lastDetectedSource,
+                detectedSource: self.session.lastDetectedSource,
                 targetLanguage: target,
                 primary: provider,
                 allowFallback: false
@@ -51,9 +51,9 @@ extension AppDelegate: PopupActions {
     }
 
     func translateOCR(_ text: String, with provider: ProviderType) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
-        let source = lastDetectedSource
+        guard let cursor = session.lastCursorPosition,
+              let target = session.lastTargetLanguage else { return }
+        let source = session.lastDetectedSource
         startOperationTask {
             await self.runOperation(
                 operation: .screenTranslate,
@@ -68,8 +68,8 @@ extension AppDelegate: PopupActions {
     }
 
     func rewrite(_ text: String) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
+        guard let cursor = session.lastCursorPosition,
+              let target = session.lastTargetLanguage else { return }
         startOperationTask {
             await self.runOperation(
                 operation: .rewrite,
@@ -84,8 +84,8 @@ extension AppDelegate: PopupActions {
     }
 
     func explain(_ text: String) {
-        guard let cursor = lastCursorPosition,
-              let target = lastTargetLanguage else { return }
+        guard let cursor = session.lastCursorPosition,
+              let target = session.lastTargetLanguage else { return }
         startOperationTask {
             await self.runOperation(
                 operation: .explain,
@@ -100,14 +100,14 @@ extension AppDelegate: PopupActions {
     }
 
     func retranslate(to targetLanguage: String) {
-        guard let text = lastCapturedText,
-              let cursor = lastCursorPosition else { return }
+        guard let text = session.lastCapturedText,
+              let cursor = session.lastCursorPosition else { return }
         startOperationTask {
             await self.runOperation(
                 operation: .translate,
                 text: text,
                 cursorPosition: cursor,
-                detectedSource: self.lastDetectedSource,
+                detectedSource: self.session.lastDetectedSource,
                 targetLanguage: targetLanguage,
                 primary: self.settingsStore.activeProvider,
                 allowFallback: true
@@ -116,50 +116,24 @@ extension AppDelegate: PopupActions {
     }
 
     func replace(with text: String) {
-        let pasteboard = NSPasteboard.general
-        let snapshot = PasteboardSnapshot.capture(from: pasteboard)
-        let ownChangeCount = PasteboardSnapshot.writeTemporary(text, to: pasteboard)
-        let targetApp = previousApp
-        let errorAnchor = lastCursorPosition ?? NSEvent.mouseLocation
+        let replacer = TextReplacer(text: text)
+        let targetApp = session.previousApp
+        let errorAnchor = session.lastCursorPosition ?? NSEvent.mouseLocation
         popup.close()
         statusController.apply(.idle)
         startOperationTask {
-            var pasted = false
-            defer {
-                // Only restore the user's clipboard if nobody wrote to it since our write.
-                if pasteboard.changeCount == ownChangeCount {
-                    if pasted {
-                        snapshot.restore(to: pasteboard)
-                    } else {
-                        // Paste failed or was cancelled: leave the text as a normal
-                        // (non-transient) clipboard entry so the user can paste manually.
-                        pasteboard.clearContents()
-                        pasteboard.setString(text, forType: .string)
-                    }
-                }
-            }
-            do {
-                try await Task.sleep(nanoseconds: Timing.pasteDelay)
-                guard let targetApp, await self.activateAndConfirm(targetApp) else {
-                    self.presentFailure(
-                        PopupError(message: "Couldn't switch back to the original app, so nothing was replaced. The text is on your clipboard; paste it manually with ⌘V."),
-                        near: errorAnchor
-                    )
-                    return
-                }
-                KeyboardSimulator.simulateCommandV()
-                pasted = true
-                try await Task.sleep(nanoseconds: Timing.clipboardRestoreDelay)
-            } catch {
-                // Cancelled. If the paste already went out, `pasted` restores the clipboard.
-                return
+            await replacer.paste(into: targetApp) {
+                self.presenter.presentFailure(
+                    PopupError(message: String(localized: "Couldn't switch back to the original app, so nothing was replaced. The text is on your clipboard; paste it manually with ⌘V.")),
+                    near: errorAnchor
+                )
             }
         }
     }
 
     func popupDidClose() {
-        lastCapturedText = nil
-        lastCapturedImage = nil
+        session.lastCapturedText = nil
+        session.lastCapturedImage = nil
     }
 
     // MARK: - Helpers
@@ -168,17 +142,5 @@ extension AppDelegate: PopupActions {
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .jpeg, properties: [.compressionFactor: 0.9])
-    }
-
-    /// Activates `app` and polls (up to ~300 ms) until it is actually frontmost.
-    private func activateAndConfirm(_ app: NSRunningApplication) async -> Bool {
-        let pid = app.processIdentifier
-        app.activate(options: .activateIgnoringOtherApps)
-        let deadline = Date().addingTimeInterval(0.3)
-        while Date() < deadline {
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == pid { return true }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
     }
 }

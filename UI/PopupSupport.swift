@@ -27,13 +27,13 @@ extension View {
     /// Custom delayed hover tooltip. SwiftUI's `.help(...)` relies on
     /// NSToolTipManager, which does not reliably show tooltips on the
     /// nonactivating floating popup panel (never becomes key window).
-    func popupButtonHelp(_ text: String) -> some View {
+    func popupButtonHelp(_ text: LocalizedStringKey) -> some View {
         modifier(PopupButtonHelpModifier(text: text))
     }
 }
 
 private struct PopupButtonHelpModifier: ViewModifier {
-    let text: String
+    let text: LocalizedStringKey
     @State private var isHovering = false
     @State private var showTooltip = false
     @State private var hoverTask: Task<Void, Never>?
@@ -78,7 +78,7 @@ private struct PopupButtonHelpModifier: ViewModifier {
 
 /// Small bordered action button used throughout the popup (with hover tooltip).
 struct PopupActionButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
 
@@ -103,7 +103,7 @@ struct RetryMenu: View {
                     Button {
                         state.actions?.retry(with: provider)
                     } label: {
-                        Label("Retry with \(provider.rawValue)", systemImage: provider.sfSymbol)
+                        Label("Retry with \(provider.displayName)", systemImage: provider.sfSymbol)
                     }
                 }
             } label: {

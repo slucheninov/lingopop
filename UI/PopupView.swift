@@ -131,7 +131,7 @@ private struct OCRContent: View {
                             state.actions?.translateOCR(text, with: provider)
                         } label: {
                             HStack {
-                                Label(provider.rawValue, systemImage: provider.sfSymbol)
+                                Label(provider.displayName, systemImage: provider.sfSymbol)
                                 if provider == state.activeTranslateProvider {
                                     Spacer(minLength: 8)
                                     Image(systemName: "checkmark")
@@ -193,7 +193,7 @@ private struct ResultHeader: View {
                     .font(.system(size: header, weight: .semibold))
                     .foregroundStyle(result.provider.iconColor)
                 if result.operation == .translate {
-                    Text("\(result.provider.rawValue) →")
+                    Text("\(result.provider.displayName) →")
                         .font(.system(size: header, weight: .semibold))
                     Menu {
                         ForEach(languageOptions(current: result.targetLanguage), id: \.self) { lang in
@@ -219,7 +219,7 @@ private struct ResultHeader: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                 } else {
-                    Text(result.provider.rawValue)
+                    Text(result.provider.displayName)
                         .font(.system(size: header, weight: .semibold))
                 }
             }
@@ -249,7 +249,7 @@ private struct FallbackDisclosure: View {
     var body: some View {
         DisclosureGroup("Why fallback was used") {
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(fallback.primaryProvider.rawValue): \(fallback.message)")
+                Text("\(fallback.primaryProvider.displayName): \(fallback.message)")
                     .fixedSize(horizontal: false, vertical: true)
                 if let details = fallback.details {
                     Text(details)

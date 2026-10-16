@@ -16,7 +16,7 @@ struct ProviderSidebar: View {
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
-                                Text(type.rawValue)
+                                Text(type.displayName)
                                     .font(.system(size: 13, weight: .medium))
                                 if type == store.activeProvider {
                                     Image(systemName: "star.fill")
@@ -62,7 +62,7 @@ struct ProviderSidebar: View {
                 Text("No key")
             }
             if let fallback = store.fallback(for: type) {
-                Text("· ↳ \(fallback.rawValue)")
+                Text("· ↳ \(fallback.displayName)")
             }
         }
         .font(.system(size: 10))

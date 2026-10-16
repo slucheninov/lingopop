@@ -6,7 +6,7 @@ enum CaptureOverlayError: UserFacingError {
 
     var userSummary: String {
         switch self {
-        case .cancelled: return "Screen selection was cancelled."
+        case .cancelled: return String(localized: "Screen selection was cancelled.")
         }
     }
 }

@@ -11,7 +11,7 @@ struct MainSettingsTab: View {
         Form {
             Section("Target language") {
                 Toggle("Auto-detect input language", isOn: $store.useAutoDetect)
-                Picker(store.useAutoDetect ? "Default target" : "Target", selection: $store.targetLanguage) {
+                Picker(store.useAutoDetect ? String(localized: "Default target") : String(localized: "Target"), selection: $store.targetLanguage) {
                     ForEach(Languages.quickList, id: \.self) { lang in
                         Text(lang).tag(lang)
                     }
@@ -69,7 +69,7 @@ struct MainSettingsTab: View {
                 HStack(spacing: 8) {
                     Image(systemName: CloudStorage.isAvailable ? "icloud.fill" : "icloud.slash")
                         .foregroundStyle(CloudStorage.isAvailable ? .blue : .secondary)
-                    Text(CloudStorage.isAvailable ? "iCloud Drive available" : "iCloud Drive unavailable")
+                    Text(CloudStorage.isAvailable ? String(localized: "iCloud Drive available") : String(localized: "iCloud Drive unavailable"))
                         .font(.system(size: 12))
                     Spacer()
                 }

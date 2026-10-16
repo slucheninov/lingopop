@@ -39,22 +39,22 @@ struct UsageSettingsTab: View {
                 // Summary cards
                 HStack(spacing: 10) {
                     SummaryCard(
-                        label: "Est. Cost",
+                        label: String(localized: "Est. Cost"),
                         value: t.estimatedCost.map { UsageFormatting.formatCost($0) } ?? "~$?",
                         subtitle: period.displayLabel,
                         valueColor: .red
                     )
                     SummaryCard(
-                        label: "Tokens",
+                        label: String(localized: "Tokens"),
                         value: UsageFormatting.formatTokens(t.inputTokens + t.outputTokens),
-                        subtitle: "in \(UsageFormatting.formatTokens(t.inputTokens)) · out \(UsageFormatting.formatTokens(t.outputTokens))"
+                        subtitle: String(localized: "in \(UsageFormatting.formatTokens(t.inputTokens)) · out \(UsageFormatting.formatTokens(t.outputTokens))")
                     )
                     SummaryCard(
-                        label: "Calls",
+                        label: String(localized: "Calls"),
                         value: "\(t.calls)",
                         subtitle: t.calls > 0
-                            ? "avg \(UsageFormatting.formatTokens((t.inputTokens + t.outputTokens) / t.calls))/call"
-                            : "no activity"
+                            ? String(localized: "avg \(UsageFormatting.formatTokens((t.inputTokens + t.outputTokens) / t.calls))/call")
+                            : String(localized: "no activity")
                     )
                 }
 
@@ -180,17 +180,17 @@ private struct ProviderBreakdownRow: View {
 private extension UsageStore.Period {
     var displayLabel: String {
         switch self {
-        case .day: return "today"
-        case .days7: return "last 7 days"
-        case .days30: return "last 30 days"
+        case .day: return String(localized: "today")
+        case .days7: return String(localized: "last 7 days")
+        case .days30: return String(localized: "last 30 days")
         }
     }
 
     var chartTitle: String {
         switch self {
-        case .day: return "Hourly tokens · today"
-        case .days7: return "Daily tokens · 7 days"
-        case .days30: return "Daily tokens · 30 days"
+        case .day: return String(localized: "Hourly tokens · today")
+        case .days7: return String(localized: "Daily tokens · 7 days")
+        case .days30: return String(localized: "Daily tokens · 30 days")
         }
     }
 }

@@ -7,14 +7,14 @@ enum ScreenOCRError: UserFacingError {
 
     /// Shown instead of the plain `noTextFound` summary when vision-capable
     /// providers are available for a Retry.
-    static let noTextFoundRetryHint = "No text found in the selected area. Try a larger selection or use Retry to send the image to AI."
+    static let noTextFoundRetryHint = String(localized: "No text found in the selected area. Try a larger selection or use Retry to send the image to AI.")
 
     var userSummary: String {
         switch self {
         case .noTextFound:
-            return "No text found in the selected area. Try a larger selection."
+            return String(localized: "No text found in the selected area. Try a larger selection.")
         case .recognitionFailed(let error):
-            return "Text recognition failed: \(error.localizedDescription)"
+            return String(localized: "Text recognition failed: \(error.localizedDescription)")
         }
     }
 }

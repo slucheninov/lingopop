@@ -94,7 +94,7 @@ private struct ProviderDetailView: View {
                     .font(.system(size: 24))
                     .foregroundStyle(provider.iconColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.rawValue)
+                    Text(provider.displayName)
                         .font(.system(size: 16, weight: .semibold))
                     Text(supportedOperationsLabel)
                         .font(.caption)

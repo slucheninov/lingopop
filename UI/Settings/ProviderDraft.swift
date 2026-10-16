@@ -43,14 +43,14 @@ struct ProviderDraft: Equatable {
         // Empty means "use the default"; anything else must be HTTPS so keys and
         // text are never sent in clear text by a typo.
         if fields.contains(.baseURL), !d.baseURL.isEmpty, !d.baseURL.lowercased().hasPrefix("https://") {
-            errors[.baseURL] = "Base URL must start with https://"
+            errors[.baseURL] = String(localized: "Base URL must start with https://")
         }
         // Referer / region end up in HTTP header values (audit L-4): no CR/LF or other control characters.
         if fields.contains(.referer), Self.containsControlCharacters(d.referer) {
-            errors[.referer] = "Referer must not contain control characters"
+            errors[.referer] = String(localized: "Referer must not contain control characters")
         }
         if fields.contains(.region), !d.region.isEmpty, !Self.isValidRegion(d.region) {
-            errors[.region] = "Region may only contain letters, digits, '-' and '_'"
+            errors[.region] = String(localized: "Region may only contain letters, digits, '-' and '_'")
         }
         return errors
     }

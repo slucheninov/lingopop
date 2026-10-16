@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import os
 
 @MainActor
 final class UsageStore: ObservableObject {
@@ -29,34 +28,34 @@ final class UsageStore: ObservableObject {
         var byProvider: [ProviderType: (input: Int, output: Int)]
     }
 
-    private let defaultsKey = "LingoPop.usage.v1"
-    private let cloudFileName = "usage.json"
-    private let defaults: UserDefaults
+    private let sync: CloudMergeSync<Record>
 
-    var iCloudEnabled: Bool = false
-    private var lastCloudMTime: Date?
+    var iCloudEnabled: Bool = false {
+        didSet { if oldValue != iCloudEnabled { sync.forgetCloudState() } }
+    }
     private var pollTimer: Timer?
-    private let log = Logger(subsystem: "com.lingopop.app", category: "UsageStore")
 
     @Published private(set) var records: [Record] = []
 
     init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        loadInitial()
+        sync = CloudMergeSync(defaults: defaults, defaultsKey: "LingoPop.usage.v1", cloudFileName: "usage.json")
+        records = sync.loadLocalItems()
         installCloudPolling()
+    }
+
+    deinit {
+        pollTimer?.invalidate()
     }
 
     // MARK: - Mutations
 
     func append(_ record: Record) {
         records.append(record)
-        if let cutoff = Calendar.current.date(byAdding: .day, value: -31, to: Calendar.current.startOfDay(for: Date())) {
-            records.removeAll { $0.timestamp < cutoff }
-        }
         persist()
     }
 
     func reset() {
+        sync.recordCleared()
         records = []
         persist()
     }
@@ -124,29 +123,15 @@ final class UsageStore: ObservableObject {
 
     // MARK: - Persistence
 
+    /// Merges the cloud file into the local records (union by id, tombstones / reset watermark applied) and writes
+    /// the result back if this Mac has records the cloud file lacks.
     func reloadFromCloudIfNewer() {
-        guard iCloudEnabled, CloudStorage.isAvailable else { return }
-        guard let cloudMTime = CloudStorage.modificationDate(cloudFileName) else { return }
-        if let last = lastCloudMTime, cloudMTime <= last { return }
-        guard let read = CloudStorage.read(cloudFileName),
-              let decoded = try? JSONDecoder().decode([Record].self, from: read.data) else { return }
-        records = decoded
-        lastCloudMTime = read.modified
+        guard cloudActive else { return }
+        guard let merged = sync.pull(local: records, normalize: normalize) else { return }
+        publish(merged)
     }
 
-    private func loadInitial() {
-        if iCloudEnabled, CloudStorage.isAvailable,
-           let read = CloudStorage.read(cloudFileName),
-           let decoded = try? JSONDecoder().decode([Record].self, from: read.data) {
-            records = decoded
-            lastCloudMTime = read.modified
-            return
-        }
-        if let data = defaults.data(forKey: defaultsKey),
-           let decoded = try? JSONDecoder().decode([Record].self, from: data) {
-            records = decoded
-        }
-    }
+    private var cloudActive: Bool { iCloudEnabled && CloudStorage.isAvailable }
 
     private func installCloudPolling() {
         pollTimer?.invalidate()
@@ -155,15 +140,26 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        defaults.set(data, forKey: defaultsKey)
-        if iCloudEnabled, CloudStorage.isAvailable {
-            if let mtime = CloudStorage.write(cloudFileName, data: data) {
-                lastCloudMTime = mtime
-            }
+    /// 31-day retention, oldest first.
+    private func normalize(_ items: [Record]) -> [Record] {
+        var result = items
+        if let cutoff = Calendar.current.date(byAdding: .day, value: -31, to: Calendar.current.startOfDay(for: Date())) {
+            result.removeAll { $0.timestamp < cutoff }
         }
+        return result.sorted { $0.timestamp < $1.timestamp }
     }
+
+    private func persist() {
+        publish(sync.save(local: normalize(records), cloudActive: cloudActive, normalize: normalize))
+    }
+
+    private func publish(_ items: [Record]) {
+        if items.map(\.id) != records.map(\.id) { records = items }
+    }
+}
+
+extension UsageStore.Record: CloudMergeable {
+    var mergeTimestamp: Date { timestamp }
 }
 
 extension UsageStore.Period {

@@ -14,9 +14,11 @@ final class SettingsStore: ObservableObject {
 
     private struct Persisted: Codable {
         var activeProvider: ProviderType
-        var fallbacks: [ProviderType: ProviderType]?
+        /// Provider-keyed maps use `ProviderKeyedDictionary` (JSON object keyed by `ProviderType.rawValue`;
+        /// the legacy flat-array form is still decoded).
+        var fallbacks: ProviderKeyedDictionary<ProviderType>?
         var targetLanguage: String
-        var providers: [ProviderType: ProviderSettings]
+        var providers: ProviderKeyedDictionary<ProviderSettings>
         var hotkey: HotkeyConfig?
         var hotkeys: [AIOperation: HotkeyConfig]?
         var launchAtLogin: Bool?
@@ -78,9 +80,9 @@ final class SettingsStore: ObservableObject {
         self.defaults = defaults
         let loaded = Self.loadInitial(defaults: defaults, defaultsKey: defaultsKey, cloudFileName: "settings.json")
         self.activeProvider = loaded.persisted.activeProvider
-        self.fallbacks = loaded.persisted.fallbacks ?? [:]
+        self.fallbacks = loaded.persisted.fallbacks?.values ?? [:]
         self.targetLanguage = loaded.persisted.targetLanguage
-        self.providers = loaded.persisted.providers
+        self.providers = loaded.persisted.providers.values
         if var migrated = loaded.persisted.hotkeys {
             if migrated[.translate] == nil, let legacy = loaded.persisted.hotkey {
                 migrated[.translate] = legacy
@@ -134,6 +136,10 @@ final class SettingsStore: ObservableObject {
             }
     }
 
+    deinit {
+        pollTimer?.invalidate()
+    }
+
     private func installCloudPolling() {
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
@@ -154,10 +160,10 @@ final class SettingsStore: ObservableObject {
     private func apply(_ p: Persisted) {
         suppressAutoSaveBefore = Date().addingTimeInterval(0.3)
         if activeProvider != p.activeProvider { activeProvider = p.activeProvider }
-        let pf = p.fallbacks ?? [:]
+        let pf = p.fallbacks?.values ?? [:]
         if fallbacks != pf { fallbacks = pf }
         if targetLanguage != p.targetLanguage { targetLanguage = p.targetLanguage }
-        if providers != p.providers { providers = p.providers }
+        if providers != p.providers.values { providers = p.providers.values }
         let pHotkeys = p.hotkeys ?? [.translate: p.hotkey ?? .default]
         if hotkeys != pHotkeys { hotkeys = pHotkeys }
         if let l = p.launchAtLogin, launchAtLogin != l { launchAtLogin = l }
@@ -176,9 +182,9 @@ final class SettingsStore: ObservableObject {
     func save() {
         let persisted = Persisted(
             activeProvider: activeProvider,
-            fallbacks: fallbacks.isEmpty ? nil : fallbacks,
+            fallbacks: fallbacks.isEmpty ? nil : ProviderKeyedDictionary(fallbacks),
             targetLanguage: targetLanguage,
-            providers: providers,
+            providers: ProviderKeyedDictionary(providers),
             hotkey: hotkeys[.translate],
             hotkeys: hotkeys.isEmpty ? nil : hotkeys,
             launchAtLogin: launchAtLogin,
@@ -196,7 +202,7 @@ final class SettingsStore: ObservableObject {
         guard let data = try? encoder.encode(persisted) else { return }
         defaults.set(data, forKey: defaultsKey)
         defaults.set(Date(), forKey: defaultsKey + ".mtime")
-        log.info("save active=\(self.activeProvider.rawValue, privacy: .public) hotkeys=\(self.hotkeys.count, privacy: .public)")
+        log.info("save active=\(self.activeProvider.displayName, privacy: .public) hotkeys=\(self.hotkeys.count, privacy: .public)")
         if iCloudSync, CloudStorage.isAvailable {
             if let mtime = CloudStorage.write(cloudFileName, data: data) {
                 lastCloudMTime = mtime
@@ -230,7 +236,7 @@ final class SettingsStore: ObservableObject {
 
     func settings(for provider: ProviderType) -> ProviderSettings {
         if let s = providers[provider] { return s }
-        if let s = Self.makeDefault().providers[provider] { return s }
+        if let s = Self.makeDefault().providers.values[provider] { return s }
         return ProviderSettings(baseURL: "", model: "")
     }
 
@@ -257,7 +263,7 @@ final class SettingsStore: ObservableObject {
             if KeychainService.set(trimmed, for: storageKey) {
                 apiKeySaveError = nil
             } else {
-                apiKeySaveError = "Failed to save API key. Please try again."
+                apiKeySaveError = String(localized: "Failed to save API key. Please try again.")
             }
         }
     }
@@ -276,6 +282,7 @@ final class SettingsStore: ObservableObject {
         )
     }
 
+    /// Uses `rawValue` (the frozen persisted identifier), never `displayName`.
     private func keychainKey(for provider: ProviderType) -> String {
         "apiKey.\(provider.rawValue)"
     }
@@ -313,7 +320,7 @@ final class SettingsStore: ObservableObject {
             activeProvider: .claude,
             fallbacks: nil,
             targetLanguage: "Ukrainian",
-            providers: [
+            providers: ProviderKeyedDictionary([
                 .claude: defaultSettings(ClaudeProvider(), preferredModel: "claude-haiku-5-5"),
                 .openai: defaultSettings(OpenAIProvider(), preferredModel: "gpt-6-luna"),
                 .gemini: defaultSettings(GeminiProvider(), preferredModel: "gemini-3.8-flash"),
@@ -323,7 +330,7 @@ final class SettingsStore: ObservableObject {
                 // Empty base URL lets DeepLProvider pick free/pro by the ":fx" key suffix.
                 .deepl: defaultSettings(DeepLProvider(), useDefaultBaseURL: false),
                 .microsoftTranslator: defaultSettings(MicrosoftTranslatorProvider())
-            ],
+            ]),
             hotkey: nil,
             launchAtLogin: nil,
             maxInputChars: nil,

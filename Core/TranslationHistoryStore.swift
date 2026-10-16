@@ -4,35 +4,31 @@ import Combine
 @MainActor
 final class TranslationHistoryStore: ObservableObject {
 
-    private let defaults: UserDefaults
-    private let defaultsKey = "LingoPop.history.v1"
     private let cloudFileName = "history.json"
+    private let sync: CloudMergeSync<TranslationHistoryEntry>
 
     @Published private(set) var entries: [TranslationHistoryEntry] = []
 
-    var iCloudEnabled: Bool = false
-    var syncHistoryToiCloud: Bool = false
-    private var lastCloudMTime: Date?
+    var iCloudEnabled: Bool = false {
+        didSet { if oldValue != iCloudEnabled { sync.forgetCloudState() } }
+    }
+    var syncHistoryToiCloud: Bool = false {
+        didSet { if oldValue != syncHistoryToiCloud { sync.forgetCloudState() } }
+    }
+    /// Last cap passed to `add` / `trim`; applied after every cloud merge. Nil until the first call.
+    private var maxCount: Int?
     private var pollTimer: Timer?
 
+    private var cloudActive: Bool { iCloudEnabled && syncHistoryToiCloud && CloudStorage.isAvailable }
+
     init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        loadInitial()
+        sync = CloudMergeSync(defaults: defaults, defaultsKey: "LingoPop.history.v1", cloudFileName: cloudFileName)
+        entries = sync.loadLocalItems()
         installCloudPolling()
     }
 
-    private func loadInitial() {
-        if iCloudEnabled, syncHistoryToiCloud, CloudStorage.isAvailable,
-           let read = CloudStorage.read(cloudFileName),
-           let decoded = try? JSONDecoder().decode([TranslationHistoryEntry].self, from: read.data) {
-            entries = decoded
-            lastCloudMTime = read.modified
-            return
-        }
-        if let data = defaults.data(forKey: defaultsKey),
-           let decoded = try? JSONDecoder().decode([TranslationHistoryEntry].self, from: data) {
-            entries = decoded
-        }
+    deinit {
+        pollTimer?.invalidate()
     }
 
     private func installCloudPolling() {
@@ -42,57 +38,55 @@ final class TranslationHistoryStore: ObservableObject {
         }
     }
 
+    /// Merges the cloud file into the local entries (union by id, tombstones applied) and writes the result back
+    /// if this Mac has entries or deletions the cloud file lacks.
     func reloadFromCloudIfNewer() {
-        guard iCloudEnabled, syncHistoryToiCloud, CloudStorage.isAvailable else { return }
-        guard let cloudMTime = CloudStorage.modificationDate(cloudFileName) else { return }
-        if let last = lastCloudMTime, cloudMTime <= last { return }
-        guard let read = CloudStorage.read(cloudFileName),
-              let decoded = try? JSONDecoder().decode([TranslationHistoryEntry].self, from: read.data) else { return }
-        entries = decoded
-        lastCloudMTime = read.modified
+        guard cloudActive else { return }
+        guard let merged = sync.pull(local: entries, normalize: normalize) else { return }
+        publish(merged)
     }
 
     func add(_ entry: TranslationHistoryEntry, maxCount: Int) {
+        self.maxCount = maxCount
         guard maxCount > 0 else {
             entries.removeAll()
             persist()
             return
         }
-        var updated = entries
-        updated.insert(entry, at: 0)
-        if updated.count > maxCount {
-            updated = Array(updated.prefix(maxCount))
-        }
-        entries = updated
+        entries.insert(entry, at: 0)
         persist()
     }
 
     func trim(to maxCount: Int) {
-        if maxCount <= 0 {
-            entries.removeAll()
-        } else if entries.count > maxCount {
-            entries = Array(entries.prefix(maxCount))
-        }
+        self.maxCount = maxCount
         persist()
     }
 
     func remove(_ entry: TranslationHistoryEntry) {
+        sync.recordDeleted([entry.id])
         entries.removeAll { $0.id == entry.id }
         persist()
     }
 
     func clear() {
+        sync.recordCleared()
         entries.removeAll()
         persist()
     }
 
+    /// Newest first, capped at `maxCount`. Entries dropped by the cap are not tombstoned: they are only
+    /// forgotten locally.
+    private func normalize(_ items: [TranslationHistoryEntry]) -> [TranslationHistoryEntry] {
+        let sorted = items.sorted { $0.timestamp > $1.timestamp }
+        guard let maxCount else { return sorted }
+        return Array(sorted.prefix(max(maxCount, 0)))
+    }
+
     private func persist() {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: defaultsKey)
-        if iCloudEnabled, syncHistoryToiCloud, CloudStorage.isAvailable {
-            if let mtime = CloudStorage.write(cloudFileName, data: data) {
-                lastCloudMTime = mtime
-            }
-        }
+        publish(sync.save(local: normalize(entries), cloudActive: cloudActive, normalize: normalize))
+    }
+
+    private func publish(_ items: [TranslationHistoryEntry]) {
+        if items.map(\.id) != entries.map(\.id) { entries = items }
     }
 }

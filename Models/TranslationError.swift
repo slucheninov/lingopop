@@ -11,7 +11,7 @@ func redactedURL(_ urlString: String) -> String {
 
 func sanitizedHTTPBodyDetail(_ body: String) -> String? {
     guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-    return "Response body omitted for privacy (\(body.count) characters)."
+    return String(localized: "Response body omitted for privacy (\(String(body.count)) characters).")
 }
 
 struct FallbackInfo {
@@ -40,30 +40,30 @@ enum TranslationError: UserFacingError {
     var userSummary: String {
         switch self {
         case .missingApiKey:
-            return "API key is not set. Open Settings → Providers and add one."
+            return String(localized: "API key is not set. Open Settings → Providers and add one.")
         case .invalidURL:
-            return "Invalid base URL."
+            return String(localized: "Invalid base URL.")
         case .http(let status, _, _):
-            return Self.hint(forStatus: status) ?? "Request failed (HTTP \(status))."
+            return Self.hint(forStatus: status) ?? String(localized: "Request failed (HTTP \(status)).")
         case .decoding:
-            return "Failed to parse the provider response."
+            return String(localized: "Failed to parse the provider response.")
         case .emptyResponse:
-            return "Provider returned empty translation."
+            return String(localized: "Provider returned empty translation.")
         case .network:
-            return "Network error. Check your connection and try again."
+            return String(localized: "Network error. Check your connection and try again.")
         case .operationNotSupported(let provider, let operation):
-            return "\(provider.rawValue) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini / Grok) in Settings → Providers."
+            return String(localized: "\(provider.displayName) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini / Grok) in Settings → Providers.")
         case .invalidConfiguration(let msg):
-            return "Invalid configuration: \(msg)"
+            return String(localized: "Invalid configuration: \(msg)")
         case .providerNotFound(let type):
-            return "Provider \(type.rawValue) is not registered. Please report this as a bug."
+            return String(localized: "Provider \(type.displayName) is not registered. Please report this as a bug.")
         }
     }
 
     var userDetail: String? {
         switch self {
         case .http(let status, let body, let url):
-            var parts = ["HTTP \(status) from \(url)"]
+            var parts = [String(localized: "HTTP \(String(status)) from \(url)")]
             if let detail = sanitizedHTTPBodyDetail(body) { parts.append(detail) }
             return parts.joined(separator: "\n")
         case .decoding(let detail):
@@ -85,10 +85,10 @@ enum TranslationError: UserFacingError {
 
     private static func hint(forStatus status: Int) -> String? {
         switch status {
-        case 401, 403: return "Check the API key in Settings → Providers."
-        case 404: return "Endpoint not found. Verify Base URL and Model in Settings."
-        case 429: return "Rate limit exceeded. Wait a moment and retry."
-        case 500...599: return "Server error from your endpoint. If you use a proxy (LiteLLM), check the model name is configured there."
+        case 401, 403: return String(localized: "Check the API key in Settings → Providers.")
+        case 404: return String(localized: "Endpoint not found. Verify Base URL and Model in Settings.")
+        case 429: return String(localized: "Rate limit exceeded. Wait a moment and retry.")
+        case 500...599: return String(localized: "Server error from your endpoint. If you use a proxy (LiteLLM), check the model name is configured there.")
         default: return nil
         }
     }

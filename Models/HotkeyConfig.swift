@@ -24,7 +24,7 @@ struct HotkeyConfig: Codable, Equatable {
     }
 
     var displayString: String {
-        if isEmpty { return "Not set" }
+        if isEmpty { return String(localized: "Not set") }
         var parts: [String] = []
         if modifiers.contains(.control) { parts.append("⌃") }
         if modifiers.contains(.option) { parts.append("⌥") }

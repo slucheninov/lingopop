@@ -30,3 +30,7 @@ struct TranslationHistoryEntry: Identifiable, Codable, Equatable {
         self.timestamp = timestamp
     }
 }
+
+extension TranslationHistoryEntry: CloudMergeable {
+    var mergeTimestamp: Date { timestamp }
+}

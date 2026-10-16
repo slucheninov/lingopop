@@ -5,22 +5,33 @@ enum StatusMenuMetrics {
     static let iconSize: CGFloat = 16
     static let iconTitleGap: CGFloat = 8
     static let titleShortcutGap: CGFloat = 19
-    static let rowHeight: CGFloat = 22
-    static let headerHeight: CGFloat = 28
+    static let rowHeight: CGFloat = 26
+    static let headerHeight: CGFloat = 34
+    static let minimumWidth: CGFloat = 420
+    /// Extra breathing room added to the widest row's natural width.
+    static let widthSlack: CGFloat = 24
     static let highlightHorizontalInset: CGFloat = 5
     static let highlightCornerRadius: CGFloat = 5
 
     static var titleLeading: CGFloat { horizontalInset + iconSize + iconTitleGap }
 }
 
-/// Non-interactive header row shown above the clipboard-style history list,
-/// with a hairline separator along its bottom edge.
+/// Non-interactive row shown above the clipboard-style history list (header with a
+/// hairline separator along its bottom edge) or in place of it (empty-state placeholder,
+/// without separator). Uses the same insets and font as the history rows.
 final class HistoryHeaderItemView: NSView {
 
     private let label = NSTextField(labelWithString: "")
+    private let showsSeparator: Bool
 
-    init(text: String, width: CGFloat) {
-        super.init(frame: NSRect(x: 0, y: 0, width: width, height: StatusMenuMetrics.headerHeight))
+    init(
+        text: String,
+        width: CGFloat,
+        height: CGFloat = StatusMenuMetrics.headerHeight,
+        showsSeparator: Bool = true
+    ) {
+        self.showsSeparator = showsSeparator
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
         label.stringValue = text
         label.font = NSFont.menuFont(ofSize: 0)
@@ -35,10 +46,10 @@ final class HistoryHeaderItemView: NSView {
         addSubview(label)
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: width),
-            heightAnchor.constraint(equalToConstant: StatusMenuMetrics.headerHeight),
+            heightAnchor.constraint(equalToConstant: height),
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: StatusMenuMetrics.horizontalInset),
             label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -StatusMenuMetrics.horizontalInset),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -1)
+            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: showsSeparator ? 1 : 0)
         ])
     }
 
@@ -48,6 +59,7 @@ final class HistoryHeaderItemView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard showsSeparator else { return }
         NSColor.separatorColor.setStroke()
         let y = bounds.minY + 0.5
         let path = NSBezierPath()

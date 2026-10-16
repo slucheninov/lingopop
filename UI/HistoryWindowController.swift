@@ -19,7 +19,7 @@ final class HistoryWindowController: NSObject, NSWindowDelegate {
         }
         let host = NSHostingController(rootView: HistoryView(store: store))
         let window = NSWindow(contentViewController: host)
-        window.title = "Translation History"
+        window.title = String(localized: "Translation History")
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 540, height: 480))
         window.isReleasedWhenClosed = false

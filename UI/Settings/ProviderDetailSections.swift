@@ -17,14 +17,14 @@ struct ApiKeySection: View {
                 HStack(spacing: 8) {
                     Image(systemName: hasKey ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(hasKey ? .green : .secondary)
-                    Text(hasKey ? "A key is stored" : "No key set")
+                    Text(hasKey ? String(localized: "A key is stored") : String(localized: "No key set"))
                         .font(.system(size: 12))
                     Spacer()
                     if hasKey {
                         Button("Clear", action: onClear)
                     }
                 }
-                SecureField(hasKey ? "Enter a new key to replace" : "Paste your API key", text: $apiKeyInput)
+                SecureField(hasKey ? String(localized: "Enter a new key to replace") : String(localized: "Paste your API key"), text: $apiKeyInput)
                     .textFieldStyle(.roundedBorder)
                 if let saveError {
                     Text(saveError)
@@ -49,7 +49,7 @@ struct ApiKeySection: View {
     }
 
     /// Opens the setup guide in the default browser (`Link` uses NSWorkspace under the hood).
-    private func guideLink(_ title: String) -> some View {
+    private func guideLink(_ title: LocalizedStringKey) -> some View {
         Link(destination: guideURL) {
             Label(title, systemImage: "arrow.up.right.square")
                 .font(.caption)
@@ -69,7 +69,7 @@ struct EndpointSection: View {
     var body: some View {
         Section("Endpoint") {
             HStack(spacing: 8) {
-                TextField(autoBaseURL ? "Auto (free/pro chosen by key)" : "Base URL", text: $baseURL)
+                TextField(autoBaseURL ? String(localized: "Auto (free/pro chosen by key)") : String(localized: "Base URL"), text: $baseURL)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled(true)
                 Button {
@@ -81,8 +81,8 @@ struct EndpointSection: View {
                 .help("Show default endpoint")
                 .popover(isPresented: $showEndpointHelp) {
                     Text(autoBaseURL
-                         ? "Leave blank to choose automatically: keys ending in :fx use api-free.deepl.com, others use \(defaultBaseURL)."
-                         : "Default: \(defaultBaseURL)")
+                         ? String(localized: "Leave blank to choose automatically: keys ending in :fx use api-free.deepl.com, others use \(defaultBaseURL).")
+                         : String(localized: "Default: \(defaultBaseURL)"))
                         .padding()
                         .frame(maxWidth: 280)
                 }
@@ -177,14 +177,14 @@ struct FallbackSection: View {
 
     var body: some View {
         Section("Fallback") {
-            LabeledContent("If \(provider.rawValue) fails") {
+            LabeledContent("If \(provider.displayName) fails") {
                 Picker("", selection: Binding(
                     get: { store.fallback(for: provider) },
                     set: { store.setFallback($0, for: provider) }
                 )) {
                     Text("Don't fall back").tag(Optional<ProviderType>.none)
                     ForEach(ProviderType.allCases.filter { $0 != provider }, id: \.self) { type in
-                        Text(type.rawValue).tag(Optional(type))
+                        Text(type.displayName).tag(Optional(type))
                     }
                 }
                 .labelsHidden()

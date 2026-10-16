@@ -83,7 +83,7 @@ private struct EntryRow: View {
                         badge(entry.targetLanguage)
                     }
                 }
-                badge(entry.provider.rawValue)
+                badge(entry.provider.displayName)
                 Spacer()
                 Text(entry.timestamp, format: .dateTime.hour().minute().day().month().year())
                     .font(.caption2).foregroundStyle(.secondary)
