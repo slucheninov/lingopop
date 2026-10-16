@@ -145,13 +145,15 @@ Besides **Settings…** and **History…**:
 
 ## Getting API keys
 
+Step-by-step instructions for every provider: [Getting an API key for LingoPop](docs/api-keys.md).
+
 | Provider in Settings | Operations | Key |
 |---|---|---|
 | Claude | Translate · Fix grammar · Rewrite · Magic | [console.anthropic.com](https://console.anthropic.com/) |
 | OpenAI | Translate · Fix grammar · Rewrite · Magic | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 | Gemini | Translate · Fix grammar · Rewrite · Magic | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | Grok | Translate · Fix grammar · Rewrite · Magic | [console.x.ai](https://console.x.ai/) |
-| DeepL | Translate only | [www.deepl.com/pro-api](https://www.deepl.com/pro-api) — free tier (500k chars/mo) available. Free keys end in `:fx`; change the base URL to `https://api.deepl.com` for paid keys |
+| DeepL | Translate only | [www.deepl.com/pro-api](https://www.deepl.com/pro-api) — free plan available. Leave the base URL empty: keys ending in `:fx` use the free endpoint, all others use the Pro endpoint automatically |
 | Microsoft Translator | Translate only | [Azure Cognitive Services](https://portal.azure.com/) — free tier (F0) gives 2M chars/mo |
 | Google Translate | Translate only | [console.cloud.google.com](https://console.cloud.google.com/apis/credentials) — enable Cloud Translation API |
 | Google (Free) | Translate only | No key — unofficial public endpoint |
