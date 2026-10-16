@@ -4,6 +4,15 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.18 — 2026-10-16
+
+- Roomier, better aligned menu-bar menu; new About item
+- Screen Translate now captures the screen with ScreenCaptureKit on macOS 14 and later (macOS 13 keeps the previous method)
+- History and usage statistics from several Macs are now merged instead of overwritten; deletions and Clear propagate through iCloud
+- Internal settings format cleanup; update LingoPop on all your Macs together when using iCloud sync (a Mac still on v0.3.17 or older cannot read settings saved by this version and keeps its local settings)
+- Interface languages: Polish, Ukrainian and German (follow the system language)
+- Internal: strings moved to a String Catalog; the app delegate was split into smaller types and the language tables were merged into one
+
 ## v0.3.17 — 2026-10-16
 
 - Added an API key setup guide (docs/api-keys.md) linked from each provider's settings tab

@@ -61,6 +61,7 @@
 - 🔁 Per-provider fallback — on 429, 5xx, or network errors, retries once with the fallback you pick for that provider
 - 📜 Translation history (0–100 entries, default 10). The three most recent results appear at the top of the menu-bar dropdown for one-click copy
 - ☁️ Settings and history sync via iCloud Drive when available (on by default). API keys stay on each Mac, encrypted with AES-GCM
+- 🌍 Interface in English, Polish, Ukrainian and German (follows the system language; English is the fallback)
 
 ## Install
 
