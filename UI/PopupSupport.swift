@@ -81,10 +81,18 @@ struct PopupActionButton: View {
     let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
+    /// Icon-only fallback for rows too narrow for the localized titles (tooltip keeps the name).
+    var iconOnly = false
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            if iconOnly {
+                Label(title, systemImage: systemImage).labelStyle(.iconOnly)
+            } else {
+                Label(title, systemImage: systemImage)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -95,6 +103,7 @@ struct PopupActionButton: View {
 /// "Retry with <provider>" menu; renders nothing when no providers are available.
 struct RetryMenu: View {
     @ObservedObject var state: PopupState
+    var iconOnly = false
 
     var body: some View {
         if !state.availableRetryProviders.isEmpty {
@@ -107,7 +116,11 @@ struct RetryMenu: View {
                     }
                 }
             } label: {
-                Label("Retry", systemImage: "arrow.triangle.2.circlepath")
+                if iconOnly {
+                    Label("Retry", systemImage: "arrow.triangle.2.circlepath").labelStyle(.iconOnly)
+                } else {
+                    Label("Retry", systemImage: "arrow.triangle.2.circlepath").lineLimit(1)
+                }
             }
             .menuIndicator(.visible)
             .fixedSize()
