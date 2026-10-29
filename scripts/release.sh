@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Build a Release LingoPop.app and package it for distribution.
+#
+# Usage:
+#   ./scripts/release.sh                       # universal (arm64 + x86_64), version from project.yml
+#   ./scripts/release.sh 0.2.0                 # universal, version override
+#   ./scripts/release.sh 0.2.0 --arch arm64    # arm64 only
+#   ./scripts/release.sh 0.2.0 --arch x86_64   # x86_64 only (Intel)
+#   ./scripts/release.sh 0.2.0 --no-dmg        # skip .dmg, only .zip
+#   ./scripts/release.sh 0.2.0 --no-zip        # skip .zip, only .dmg
+
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+VERSION=""
+ARCHS_FLAG="arm64 x86_64"
+ARCH_LABEL="universal"
+MAKE_DMG=1
+MAKE_ZIP=1
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --arch)
+            ARCHS_FLAG="$2"
+            ARCH_LABEL="$2"
+            shift 2 ;;
+        --no-dmg) MAKE_DMG=0; shift ;;
+        --no-zip) MAKE_ZIP=0; shift ;;
+        -h|--help)
+            grep '^#' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *)
+            if [[ -z "$VERSION" ]]; then VERSION="$1"; else
+                echo "Unknown argument: $1" >&2; exit 1
+            fi
+            shift ;;
+    esac
+done
+
+if [[ -z "$VERSION" ]]; then
+    VERSION=$(awk '/MARKETING_VERSION:/ { gsub(/"/,"",$2); print $2 }' project.yml)
+    if [[ -z "$VERSION" ]]; then VERSION="0.0.0"; fi
+fi
+
+if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Invalid version: '$VERSION' (expected MAJOR.MINOR.PATCH)" >&2
+    exit 1
+fi
+case "$ARCH_LABEL" in
+    universal|arm64|x86_64) ;;
+    *) echo "Invalid --arch: '$ARCH_LABEL' (expected universal|arm64|x86_64)" >&2; exit 1 ;;
+esac
+
+echo "→ Version: $VERSION"
+echo "→ Architecture(s): $ARCHS_FLAG"
+
+xcodegen generate
+
+BUILD_DIR=$(mktemp -d)
+
+xcodebuild \
+    -project LingoPop.xcodeproj \
+    -scheme LingoPop \
+    -configuration Release \
+    -derivedDataPath "$BUILD_DIR" \
+    ARCHS="$ARCHS_FLAG" \
+    VALID_ARCHS="$ARCHS_FLAG" \
+    ONLY_ACTIVE_ARCH=NO \
+    MARKETING_VERSION="$VERSION" \
+    CURRENT_PROJECT_VERSION="$VERSION" \
+    build
+
+SRC_APP="$BUILD_DIR/Build/Products/Release/LingoPop.app"
+if [[ ! -d "$SRC_APP" ]]; then
+    echo "Build did not produce $SRC_APP" >&2
+    exit 1
+fi
+
+DIST_DIR="$PROJECT_DIR/dist"
+mkdir -p "$DIST_DIR"
+
+STAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGE_DIR" "$BUILD_DIR" "${DMG_STAGE:-}"' EXIT
+STAGED_APP="$STAGE_DIR/LingoPop.app"
+cp -R "$SRC_APP" "$STAGED_APP"
+xattr -cr "$STAGED_APP"
+
+if security find-certificate -c "LingoPop Dev" >/dev/null 2>&1; then
+    SIGN_IDENTITY="LingoPop Dev"
+    SIGN_OPTS=()   # NOTE: no --options runtime: hardened-runtime library validation rejects the Xcode debug dylib / non-matching Team ID with a self-signed cert
+else
+    echo "Warning: 'LingoPop Dev' cert missing — signing ad-hoc. Run scripts/setup-cert.sh."
+    SIGN_IDENTITY="-"
+    SIGN_OPTS=()
+fi
+FRAMEWORKS_DIR="$STAGED_APP/Contents/Frameworks"
+if [ -d "$FRAMEWORKS_DIR" ]; then
+    find "$FRAMEWORKS_DIR" -name "*.framework" -o -name "*.dylib" | while read component; do
+        codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$component"
+    done
+fi
+codesign --force \
+    --sign "$SIGN_IDENTITY" \
+    ${SIGN_OPTS[@]+"${SIGN_OPTS[@]}"} \
+    --entitlements "$PROJECT_DIR/App/LingoPop.entitlements" \
+    "$STAGED_APP" 2>&1 | tail -3
+
+echo "→ Verifying architectures:"
+lipo -archs "$STAGED_APP/Contents/MacOS/LingoPop"
+
+BASENAME="LingoPop-${VERSION}-mac-${ARCH_LABEL}"
+
+if [[ "$MAKE_ZIP" -eq 1 ]]; then
+    ZIP_PATH="$DIST_DIR/${BASENAME}.zip"
+    rm -f "$ZIP_PATH"
+    (cd "$STAGE_DIR" && /usr/bin/ditto -ck --keepParent LingoPop.app "$ZIP_PATH")
+    echo "→ Wrote $ZIP_PATH"
+fi
+
+if [[ "$MAKE_DMG" -eq 1 ]]; then
+    DMG_PATH="$DIST_DIR/${BASENAME}.dmg"
+    rm -f "$DMG_PATH"
+    DMG_STAGE="$(mktemp -d)"
+    cp -R "$STAGED_APP" "$DMG_STAGE/"
+    ln -s /Applications "$DMG_STAGE/Applications"
+    hdiutil create \
+        -volname "LingoPop ${VERSION}" \
+        -srcfolder "$DMG_STAGE" \
+        -ov -format UDZO \
+        "$DMG_PATH" >/dev/null
+    echo "→ Wrote $DMG_PATH"
+fi
+
+echo ""
+echo "Done. Artifacts in $DIST_DIR:"
+ls -lh "$DIST_DIR" | grep "$VERSION" || ls -lh "$DIST_DIR"

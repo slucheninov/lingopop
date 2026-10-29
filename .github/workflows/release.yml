@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.2.0). Leave blank to read from project.yml.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15   # Apple Silicon — xcodebuild cross-compiles to x86_64 for universal
+    permissions:
+      contents: write   # needed only to create the GitHub release in this repository
+
+    steps:
+      - name: Require default branch for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "::error::Manual runs are only allowed from $DEFAULT_BRANCH (got $REF_NAME)."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app
+          echo "DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer" >> "$GITHUB_ENV"
+
+      # NOTE: brew cannot pin a formula version, so xcodegen floats to the latest release.
+      - name: Install xcodegen
+        run: |
+          brew untap aws/tap || true
+          brew install xcodegen
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(grep -E '^\s*MARKETING_VERSION:' project.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "Could not resolve a version" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION"
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [[ -n "$VERSION" ]] && ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+
+      - name: Build universal release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/release.sh "$VERSION"
+
+      - name: Verify artifacts
+        run: |
+          ls -lh dist/
+
+      - name: Upload workflow artifacts (debug)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lingopop-${{ steps.version.outputs.version }}
+          path: dist/*
+          retention-days: 7
+
+      - name: Generate release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          extract_section() {
+            awk -v h="$1" '
+              /^## / { if (found) exit; if ($2 == h) { found = 1; next } }
+              found { print }
+            ' CHANGELOG.md
+          }
+          SECTION=$(extract_section "v${VERSION}")
+          if [[ -z "$SECTION" ]]; then
+            SECTION=$(extract_section "Unreleased")
+          fi
+          {
+            echo "## LingoPop v${VERSION}"
+            echo ""
+            if [[ -n "$SECTION" ]]; then
+              printf '%s\n' "$SECTION"
+            else
+              echo "See the [changelog](https://github.com/${REPO}/blob/main/CHANGELOG.md) for details."
+            fi
+            echo ""
+            echo ""
+            echo "### Install"
+            echo ""
+            echo "1. Download \`LingoPop-${VERSION}-mac-universal.dmg\` (Universal, both Apple Silicon and Intel)."
+            echo "2. Open the dmg and drag LingoPop to Applications."
+            echo "3. First launch: right-click LingoPop.app → **Open** (the app is ad-hoc signed, Gatekeeper will warn once)."
+            echo "4. Grant Accessibility access when prompted (Settings → Privacy & Security → Accessibility)."
+          } > release_notes.md
+          cat release_notes.md
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          shasum -a 256 -- *.dmg *.zip 2>/dev/null | tee SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --repo "${{ github.repository }}" \
+            --title "LingoPop v${VERSION}" \
+            --notes-file release_notes.md \
+            "dist/LingoPop-${VERSION}-mac-universal.dmg" \
+            "dist/LingoPop-${VERSION}-mac-universal.zip" \
+            "dist/SHA256SUMS"

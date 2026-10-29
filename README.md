@@ -12,6 +12,9 @@
   <a href="https://github.com/slucheninov/lingopop/releases/latest">
     <img src="https://img.shields.io/github/v/release/slucheninov/lingopop?label=Download&style=for-the-badge&color=blue" alt="Latest release"/>
   </a>
+  <a href="https://github.com/slucheninov/lingopop/actions/workflows/ci.yml">
+    <img src="https://github.com/slucheninov/lingopop/actions/workflows/ci.yml/badge.svg" alt="CI"/>
+  </a>
   <img src="https://img.shields.io/badge/macOS-13.0%2B-blue?style=for-the-badge" alt="macOS 13+"/>
   <img src="https://img.shields.io/badge/arch-Apple%20Silicon%20%2B%20Intel-lightgrey?style=for-the-badge" alt="Universal"/>
 </p>
@@ -85,13 +88,7 @@ open /Applications/LingoPop.app
 
 ### Architecture-specific builds
 
-| Asset | Size | Runs on |
-|---|---|---|
-| `LingoPop-X.Y.Z-mac-universal.dmg` / `.zip` | ~1.2 MB | Apple Silicon **and** Intel |
-| `LingoPop-X.Y.Z-mac-arm64.zip` | ~800 KB | Apple Silicon only |
-| `LingoPop-X.Y.Z-mac-x86_64.zip` | ~830 KB | Intel only |
-
-When in doubt, take the universal build.
+Releases publish a single universal build (`LingoPop-X.Y.Z-mac-universal.dmg` / `.zip`, plus `SHA256SUMS`) that runs on Apple Silicon **and** Intel. Per-architecture builds can be produced locally with `./scripts/release.sh <version> --arch arm64|x86_64`.
 
 ## Setup
 
@@ -163,7 +160,7 @@ Step-by-step instructions for every provider: [Getting an API key for LingoPop](
 
 The maintainer doesn't pay for an Apple Developer Program subscription ($99/yr), so the app is **ad-hoc signed** instead of notarized. The signature still proves the binary hasn't been tampered with after build, but Gatekeeper can't verify the publisher. You only see the warning on first launch.
 
-If you'd rather not bypass Gatekeeper at all, build LingoPop from source (request access to the private source repo from the maintainer).
+If you'd rather not bypass Gatekeeper at all, build LingoPop from source (see [Build from source](#build-from-source)).
 
 ## Requirements
 
@@ -188,6 +185,25 @@ See [CHANGELOG.md](CHANGELOG.md) or browse [Releases](https://github.com/sluchen
 
 Open an [issue](https://github.com/slucheninov/lingopop/issues/new/choose) with your macOS version, LingoPop version, and steps to reproduce.
 
+## Build from source
+
+Requirements: macOS 13+, Xcode 16+, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+
+```bash
+brew install xcodegen
+git clone https://github.com/slucheninov/lingopop.git
+cd lingopop
+./scripts/setup-cert.sh   # optional: stable self-signed cert so the Accessibility / Screen Recording grant survives rebuilds
+./build.sh run            # build, install to ~/Applications/LingoPop.app and launch
+./scripts/test.sh         # run the unit tests
+```
+
+`LingoPop.xcodeproj` is generated from `project.yml`; never edit it directly.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+
 ## License
 
-See [LICENSE](LICENSE).
+LingoPop is released under the [MIT License](LICENSE).

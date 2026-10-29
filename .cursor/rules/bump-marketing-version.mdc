@@ -1,0 +1,12 @@
+---
+description: Do not bump MARKETING_VERSION in feature changes; versions are bumped only by the release script
+alwaysApply: true
+---
+
+# Do not bump versions in feature changes
+
+Do **not** change `MARKETING_VERSION` or `CURRENT_PROJECT_VERSION` in `project.yml` as part of feature, fix, refactor, UI or provider pull requests.
+
+Versions are bumped only by `scripts/publish-release.sh prepare <version>` (see `RELEASING.md`), which creates the release branch and PR.
+
+Instead, note user-facing changes for `CHANGELOG.md`; the release flow requires a `## v<version>` section there (added when preparing the release).

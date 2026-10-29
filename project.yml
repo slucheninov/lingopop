@@ -1,0 +1,94 @@
+name: LingoPop
+options:
+  bundleIdPrefix: com.lingopop
+  developmentLanguage: en
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    ARCHS: "arm64 x86_64"
+    VALID_ARCHS: "arm64 x86_64"
+    MARKETING_VERSION: "0.3.18"
+    CURRENT_PROJECT_VERSION: "8"
+  configs:
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+    Release:
+      ONLY_ACTIVE_ARCH: NO
+
+packages:
+  HotKey:
+    url: https://github.com/soffes/HotKey
+    exactVersion: "0.2.1"
+
+targets:
+  LingoPop:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: App
+      - path: Core
+      - path: Providers
+      - path: UI
+      - path: Models
+    info:
+      path: App/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleName: LingoPop
+        CFBundleDisplayName: LingoPop
+        CFBundleIconName: AppIcon
+        CFBundleLocalizations: [en, pl, uk, de]
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSHumanReadableCopyright: ""
+    entitlements:
+      path: App/LingoPop.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingopop.app
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_EMIT_LOC_STRINGS: YES
+    dependencies:
+      - package: HotKey
+    scheme:
+      testTargets: [LingoPopTests]
+  LingoPopTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Tests/LingoPopTests
+      - Core/CloudMerge.swift
+      - Core/CloudStorage.swift
+      - Core/PromptBuilder.swift
+      - Core/UsagePricing.swift
+      - Models/AIOperation.swift
+      - Models/ProviderConfig.swift
+      - Models/ProviderKeyedDictionary.swift
+      - Models/LanguageCodes.swift
+      - Models/Languages.swift
+      - Models/HotkeyConfig.swift
+    dependencies:
+      - package: HotKey
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingopop.tests
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: NO
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""
