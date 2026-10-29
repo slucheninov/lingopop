@@ -30,6 +30,8 @@ enum ActionRowMetrics {
         }
         if let menuTitle { widths.append(textWidth(menuTitle) + buttonChrome + menuIndicatorWidth) }
         guard !widths.isEmpty else { return 0 }
-        return widths.reduce(0, +) + buttonSpacing * CGFloat(widths.count - 1) + rowInset
+        // The rows put a `Spacer` before Retry, and the HStack spaces it like any other
+        // child, so there is one gap more than between the buttons alone.
+        return widths.reduce(0, +) + buttonSpacing * CGFloat(widths.count) + rowInset
     }
 }
