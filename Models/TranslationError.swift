@@ -1,0 +1,95 @@
+import Foundation
+
+func redactedURL(_ urlString: String) -> String {
+    guard var components = URLComponents(string: urlString) else { return "<redacted-url>" }
+    components.user = nil
+    components.password = nil
+    components.query = nil
+    components.fragment = nil
+    return components.string ?? "<redacted-url>"
+}
+
+func sanitizedHTTPBodyDetail(_ body: String) -> String? {
+    guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    return String(localized: "Response body omitted for privacy (\(String(body.count)) characters).")
+}
+
+struct FallbackInfo {
+    let primaryProvider: ProviderType
+    let message: String
+    let details: String?
+
+    init(primaryProvider: ProviderType, error: TranslationError) {
+        self.primaryProvider = primaryProvider
+        self.message = error.userSummary
+        self.details = error.userDetail
+    }
+}
+
+enum TranslationError: UserFacingError {
+    case missingApiKey
+    case invalidURL
+    case http(status: Int, body: String, url: String)
+    case decoding(String)
+    case emptyResponse
+    case network(Error)
+    case operationNotSupported(provider: ProviderType, operation: AIOperation)
+    case invalidConfiguration(String)
+    case providerNotFound(ProviderType)
+
+    var userSummary: String {
+        switch self {
+        case .missingApiKey:
+            return String(localized: "API key is not set. Open Settings → Providers and add one.")
+        case .invalidURL:
+            return String(localized: "Invalid base URL.")
+        case .http(let status, _, _):
+            return Self.hint(forStatus: status) ?? String(localized: "Request failed (HTTP \(status)).")
+        case .decoding:
+            return String(localized: "Failed to parse the provider response.")
+        case .emptyResponse:
+            return String(localized: "Provider returned empty translation.")
+        case .network:
+            return String(localized: "Network error. Check your connection and try again.")
+        case .operationNotSupported(let provider, let operation):
+            return String(localized: "\(provider.displayName) doesn't support \(operation.displayName.lowercased()). Switch to an LLM provider (Claude / OpenAI / Gemini / Grok) in Settings → Providers.")
+        case .invalidConfiguration(let msg):
+            return String(localized: "Invalid configuration: \(msg)")
+        case .providerNotFound(let type):
+            return String(localized: "Provider \(type.displayName) is not registered. Please report this as a bug.")
+        }
+    }
+
+    var userDetail: String? {
+        switch self {
+        case .http(let status, let body, let url):
+            var parts = [String(localized: "HTTP \(String(status)) from \(url)")]
+            if let detail = sanitizedHTTPBodyDetail(body) { parts.append(detail) }
+            return parts.joined(separator: "\n")
+        case .decoding(let detail):
+            return detail
+        case .network(let error):
+            return error.localizedDescription
+        default:
+            return nil
+        }
+    }
+
+    /// Logs and `localizedDescription` keep the combined summary + technical detail.
+    var errorDescription: String? {
+        if let details = userDetail {
+            return "\(userSummary)\n\n\(details)"
+        }
+        return userSummary
+    }
+
+    private static func hint(forStatus status: Int) -> String? {
+        switch status {
+        case 401, 403: return String(localized: "Check the API key in Settings → Providers.")
+        case 404: return String(localized: "Endpoint not found. Verify Base URL and Model in Settings.")
+        case 429: return String(localized: "Rate limit exceeded. Wait a moment and retry.")
+        case 500...599: return String(localized: "Server error from your endpoint. If you use a proxy (LiteLLM), check the model name is configured there.")
+        default: return nil
+        }
+    }
+}

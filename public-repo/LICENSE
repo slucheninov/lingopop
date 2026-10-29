@@ -1,0 +1,30 @@
+LingoPop — Binary Distribution License
+
+Copyright © 2026 Stas Lucheninov. All rights reserved.
+
+This repository distributes pre-built binaries of LingoPop. The source code is
+maintained in a private repository.
+
+Permission is granted to any individual or organization to:
+  • Download, install, and run the LingoPop binaries on their own machines for
+    personal or commercial use, at no cost.
+  • Share unmodified copies of the released binaries with others.
+
+The following are NOT permitted without prior written permission from the
+copyright holder:
+  • Modifying, decompiling, disassembling, or reverse-engineering the
+    binaries, except to the extent that such activity is expressly permitted
+    by applicable law.
+  • Redistributing modified copies of the binaries.
+  • Removing or altering any copyright notices, branding, or version
+    information embedded in the binaries.
+  • Using the LingoPop name, icon, or branding in derivative products without
+    permission.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
