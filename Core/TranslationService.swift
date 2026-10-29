@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class TranslationService {
 
     let providers: [ProviderType: AIProvider] = [

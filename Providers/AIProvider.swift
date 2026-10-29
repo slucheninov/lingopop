@@ -5,7 +5,7 @@ enum ProviderField: Hashable {
     case apiKey, baseURL, model, referer, region
 }
 
-protocol AIProvider {
+protocol AIProvider: Sendable {
     var type: ProviderType { get }
     var defaultBaseURL: String { get }
     var availableModels: [String] { get }

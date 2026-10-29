@@ -60,7 +60,8 @@ final class SettingsStore: ObservableObject {
     @Published private(set) var secretsRevision: Int = 0
 
     private var saveSubscription: AnyCancellable?
-    private var pollTimer: Timer?
+    // Only mutated on the main actor; invalidated in the nonisolated deinit (no other reference exists then).
+    nonisolated(unsafe) private var pollTimer: Timer?
     private var lastCloudMTime: Date?
     private var suppressAutoSaveBefore: Date = .distantPast
     private let log = Logger(subsystem: "com.lingopop.app", category: "SettingsStore")
