@@ -8,7 +8,8 @@ final class PopupWindow {
     private var panel: NSPanel?
     private var clickMonitor: Any?
     private var keyMonitor: Any?
-    private var resizeObserver: NSObjectProtocol?
+    // Only written on the main actor; read in the nonisolated deinit when no other reference exists.
+    nonisolated(unsafe) private var resizeObserver: NSObjectProtocol?
     private var isClosing: Bool = false
     /// Where the popup was requested and the visible area of that screen, kept so the
     /// panel can be re-placed when its content (and thus size) changes.
@@ -111,8 +112,9 @@ final class PopupWindow {
         resizeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResizeNotification, object: panel, queue: .main
         ) { [weak self, weak panel] _ in
-            guard let self, let panel else { return }
+            // Delivered on the main queue (`queue: .main`).
             MainActor.assumeIsolated {
+                guard let self, let panel else { return }
                 panel.invalidateShadow()
                 self.keepOnScreen(panel)
             }

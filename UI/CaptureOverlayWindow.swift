@@ -13,7 +13,7 @@ enum CaptureOverlayError: UserFacingError {
 
 final class CaptureOverlayWindow: NSPanel {
 
-    private let ownScreen: NSScreen
+    fileprivate let ownScreen: NSScreen
     fileprivate let drawingView: OverlayDrawingView
 
     init(screen: NSScreen) {
@@ -48,96 +48,115 @@ final class CaptureOverlayWindow: NSPanel {
     /// Returns the selection in global AppKit screen coordinates.
     @MainActor
     static func runSelection() async throws -> CGRect {
-        let windows = NSScreen.screens.map { CaptureOverlayWindow(screen: $0) }
-
-        var monitor: Any?
-        var continuation: CheckedContinuation<CGRect, Error>?
-        var finished = false
-
-        func teardown() {
-            if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
-            for w in windows { w.orderOut(nil) }
-            NSCursor.arrow.set()
-        }
-
-        /// Single place that resumes the continuation; safe to call repeatedly.
-        func resumeOnce(_ result: Result<CGRect, Error>) {
-            // No stored continuation yet (cancellation raced ahead of setup): the post-setup
-            // `Task.isCancelled` check below will call us again once it exists.
-            guard !finished, let cont = continuation else { return }
-            finished = true
-            continuation = nil
-            teardown()
-            cont.resume(with: result)
-        }
-
+        let coordinator = SelectionCoordinator(windows: NSScreen.screens.map { CaptureOverlayWindow(screen: $0) })
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CGRect, Error>) in
-                continuation = cont
-                var startPoint: NSPoint?
-                var selectionRect: CGRect?
-
-                @MainActor func updateDrawing() {
-                    for w in windows {
-                        w.drawingView.selectionScreenRect = selectionRect
-                        w.drawingView.screenOrigin = w.ownScreen.frame.origin
-                        w.drawingView.setNeedsDisplay(w.drawingView.bounds)
-                    }
-                }
-
-                monitor = NSEvent.addLocalMonitorForEvents(
-                    matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .keyDown]
-                ) { event in
-                    switch event.type {
-                    case .leftMouseDown:
-                        startPoint = NSEvent.mouseLocation
-                        selectionRect = nil
-                        updateDrawing()
-
-                    case .leftMouseDragged:
-                        guard let start = startPoint else { return event }
-                        let cur = NSEvent.mouseLocation
-                        selectionRect = CGRect(
-                            x: min(start.x, cur.x),
-                            y: min(start.y, cur.y),
-                            width: abs(cur.x - start.x),
-                            height: abs(cur.y - start.y)
-                        )
-                        updateDrawing()
-
-                    case .leftMouseUp:
-                        if let rect = selectionRect, rect.width >= 10, rect.height >= 10 {
-                            resumeOnce(.success(rect))
-                        } else {
-                            resumeOnce(.failure(CaptureOverlayError.cancelled))
-                        }
-                        return nil
-
-                    case .keyDown where event.keyCode == UInt16(kVK_Escape):
-                        resumeOnce(.failure(CaptureOverlayError.cancelled))
-                        return nil
-
-                    default: break
-                    }
-                    return event
-                }
-
-                NSApp.activate(ignoringOtherApps: true)
-                NSCursor.crosshair.set()
-                for w in windows {
-                    w.makeKeyAndOrderFront(nil)
-                }
-
-                // A task cancelled before the continuation was stored never ran `onCancel` against it.
-                if Task.isCancelled {
-                    resumeOnce(.failure(CancellationError()))
-                }
+                coordinator.start(with: cont)
             }
         } onCancel: {
             Task { @MainActor in
-                resumeOnce(.failure(CancellationError()))
+                coordinator.resumeOnce(.failure(CancellationError()))
             }
         }
+    }
+}
+
+/// Owns the mutable state of one `runSelection()` call. Main-actor isolated (and therefore
+/// `Sendable`), so the event monitor and the cancellation handler can share it safely.
+@MainActor
+private final class SelectionCoordinator {
+    private let windows: [CaptureOverlayWindow]
+    private var monitor: Any?
+    private var continuation: CheckedContinuation<CGRect, Error>?
+    private var finished = false
+    private var startPoint: NSPoint?
+    private var selectionRect: CGRect?
+
+    init(windows: [CaptureOverlayWindow]) {
+        self.windows = windows
+    }
+
+    func start(with cont: CheckedContinuation<CGRect, Error>) {
+        continuation = cont
+        monitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .keyDown]
+        ) { [self] event in
+            // Local monitors are always invoked on the main thread.
+            let consumed = MainActor.assumeIsolated { handle(event) }
+            return consumed ? nil : event
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+        NSCursor.crosshair.set()
+        for w in windows {
+            w.makeKeyAndOrderFront(nil)
+        }
+
+        // A task cancelled before the continuation was stored never ran `onCancel` against it.
+        if Task.isCancelled {
+            resumeOnce(.failure(CancellationError()))
+        }
+    }
+
+    /// Returns true when the event was consumed (must not propagate).
+    private func handle(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown:
+            startPoint = NSEvent.mouseLocation
+            selectionRect = nil
+            updateDrawing()
+
+        case .leftMouseDragged:
+            guard let start = startPoint else { return false }
+            let cur = NSEvent.mouseLocation
+            selectionRect = CGRect(
+                x: min(start.x, cur.x),
+                y: min(start.y, cur.y),
+                width: abs(cur.x - start.x),
+                height: abs(cur.y - start.y)
+            )
+            updateDrawing()
+
+        case .leftMouseUp:
+            if let rect = selectionRect, rect.width >= 10, rect.height >= 10 {
+                resumeOnce(.success(rect))
+            } else {
+                resumeOnce(.failure(CaptureOverlayError.cancelled))
+            }
+            return true
+
+        case .keyDown where event.keyCode == UInt16(kVK_Escape):
+            resumeOnce(.failure(CaptureOverlayError.cancelled))
+            return true
+
+        default: break
+        }
+        return false
+    }
+
+    private func updateDrawing() {
+        for w in windows {
+            w.drawingView.selectionScreenRect = selectionRect
+            w.drawingView.screenOrigin = w.ownScreen.frame.origin
+            w.drawingView.setNeedsDisplay(w.drawingView.bounds)
+        }
+    }
+
+    private func teardown() {
+        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        for w in windows { w.orderOut(nil) }
+        NSCursor.arrow.set()
+    }
+
+    /// Single place that resumes the continuation; safe to call repeatedly.
+    func resumeOnce(_ result: Result<CGRect, Error>) {
+        // No stored continuation yet (cancellation raced ahead of setup): the post-setup
+        // `Task.isCancelled` check in `start` will call us again once it exists.
+        guard !finished, let cont = continuation else { return }
+        finished = true
+        continuation = nil
+        teardown()
+        cont.resume(with: result)
     }
 }
 

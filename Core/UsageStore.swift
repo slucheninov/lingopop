@@ -33,7 +33,8 @@ final class UsageStore: ObservableObject {
     var iCloudEnabled: Bool = false {
         didSet { if oldValue != iCloudEnabled { sync.forgetCloudState() } }
     }
-    private var pollTimer: Timer?
+    // Only mutated on the main actor; invalidated in the nonisolated deinit (no other reference exists then).
+    nonisolated(unsafe) private var pollTimer: Timer?
 
     @Published private(set) var records: [Record] = []
 

@@ -24,45 +24,28 @@ enum ScreenOCR {
     /// Recognises text in `image` using the Vision framework.
     /// Observations are sorted top-to-bottom (highest Y first in Vision's normalised coords).
     static func recognize(image: CGImage) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            // The completion handler and a thrown `perform` can both report; guard against double resume.
-            let lock = NSLock()
-            var resumed = false
-            func finish(_ result: Result<String, Error>) {
-                lock.lock()
-                defer { lock.unlock() }
-                guard !resumed else { return }
-                resumed = true
-                continuation.resume(with: result)
-            }
+        // Vision's `perform` is synchronous; run it off the caller's executor.
+        try await Task.detached(priority: .userInitiated) {
+            try performRecognition(image: image)
+        }.value
+    }
 
-            DispatchQueue.global(qos: .userInitiated).async {
-                let request = VNRecognizeTextRequest { req, error in
-                    if let error {
-                        finish(.failure(ScreenOCRError.recognitionFailed(error)))
-                        return
-                    }
-                    let observations = (req.results as? [VNRecognizedTextObservation]) ?? []
-                    let text = observations
-                        .sorted { $0.boundingBox.minY > $1.boundingBox.minY }
-                        .compactMap { $0.topCandidates(1).first?.string }
-                        .joined(separator: "\n")
-                    if text.isEmpty {
-                        finish(.failure(ScreenOCRError.noTextFound))
-                    } else {
-                        finish(.success(text))
-                    }
-                }
-                request.recognitionLevel = .accurate
-                request.usesLanguageCorrection = true
+    private static func performRecognition(image: CGImage) throws -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
 
-                let handler = VNImageRequestHandler(cgImage: image, options: [:])
-                do {
-                    try handler.perform([request])
-                } catch {
-                    finish(.failure(ScreenOCRError.recognitionFailed(error)))
-                }
-            }
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            throw ScreenOCRError.recognitionFailed(error)
         }
+        let text = (request.results ?? [])
+            .sorted { $0.boundingBox.minY > $1.boundingBox.minY }
+            .compactMap { $0.topCandidates(1).first?.string }
+            .joined(separator: "\n")
+        if text.isEmpty { throw ScreenOCRError.noTextFound }
+        return text
     }
 }

@@ -37,10 +37,11 @@ enum SecretStorage {
 
     // Derived key is cached after first derivation (guarded by `lock`).
     private static let lock = NSLock()
-    private static var cachedKey: SymmetricKey?
+    // Mutable statics are only touched while holding `lock`.
+    nonisolated(unsafe) private static var cachedKey: SymmetricKey?
     // True when machineIdentifier() had to generate a brand-new machine.key
     // (IOPlatformUUID unavailable); an existing secrets.dat can't match it.
-    private static var machineKeyWasFreshlyGenerated = false
+    nonisolated(unsafe) private static var machineKeyWasFreshlyGenerated = false
 
     // H-1: HKDF-derived key using a persisted random salt (secrets.salt).
     private static func symmetricKey() throws -> SymmetricKey {

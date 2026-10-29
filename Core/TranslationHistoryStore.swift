@@ -17,7 +17,8 @@ final class TranslationHistoryStore: ObservableObject {
     }
     /// Last cap passed to `add` / `trim`; applied after every cloud merge. Nil until the first call.
     private var maxCount: Int?
-    private var pollTimer: Timer?
+    // Only mutated on the main actor; invalidated in the nonisolated deinit (no other reference exists then).
+    nonisolated(unsafe) private var pollTimer: Timer?
 
     private var cloudActive: Bool { iCloudEnabled && syncHistoryToiCloud && CloudStorage.isAvailable }
 

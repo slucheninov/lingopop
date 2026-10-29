@@ -9,7 +9,7 @@ enum PermissionsManager {
 
     @discardableResult
     static func requestAccessibility() -> Bool {
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let key = "AXTrustedCheckOptionPrompt" // value of kAXTrustedCheckOptionPrompt (the C global is not concurrency-safe)
         let options: CFDictionary = [key: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }

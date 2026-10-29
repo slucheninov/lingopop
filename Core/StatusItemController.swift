@@ -11,6 +11,7 @@ final class StatusItemController {
 
     private(set) var statusItem: NSStatusItem?
     private var spinTimer: Timer?
+    private var spinIndex = 0
     private var errorResetTask: Task<Void, Never>?
     private(set) var state: State = .idle
 
@@ -65,12 +66,13 @@ final class StatusItemController {
     private func startSpin() {
         guard statusItem?.button != nil else { return }
         let frames = ["arrow.triangle.2.circlepath", "arrow.triangle.2.circlepath.circle"]
-        var index = 0
+        spinIndex = 0
         setSymbol(frames[0], tint: nil)
         spinTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: true) { [weak self] _ in
-            index = (index + 1) % frames.count
             Task { @MainActor in
-                self?.setSymbol(frames[index], tint: nil)
+                guard let self else { return }
+                self.spinIndex = (self.spinIndex + 1) % frames.count
+                self.setSymbol(frames[self.spinIndex], tint: nil)
             }
         }
     }
