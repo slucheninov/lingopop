@@ -88,13 +88,7 @@ open /Applications/LingoPop.app
 
 ### Architecture-specific builds
 
-| Asset | Size | Runs on |
-|---|---|---|
-| `LingoPop-X.Y.Z-mac-universal.dmg` / `.zip` | ~1.2 MB | Apple Silicon **and** Intel |
-| `LingoPop-X.Y.Z-mac-arm64.zip` | ~800 KB | Apple Silicon only |
-| `LingoPop-X.Y.Z-mac-x86_64.zip` | ~830 KB | Intel only |
-
-When in doubt, take the universal build.
+Releases publish a single universal build (`LingoPop-X.Y.Z-mac-universal.dmg` / `.zip`, plus `SHA256SUMS`) that runs on Apple Silicon **and** Intel. Per-architecture builds can be produced locally with `./scripts/release.sh <version> --arch arm64|x86_64`.
 
 ## Setup
 

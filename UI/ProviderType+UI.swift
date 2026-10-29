@@ -30,7 +30,7 @@ extension ProviderType {
     /// Public page (rendered by GitHub) explaining how to get an API key for each provider.
     static let keyGuideBaseURL = "https://github.com/slucheninov/lingopop/blob/main/docs/api-keys.md"
 
-    /// Fixed section anchor in `public-repo/docs/api-keys.md`; the headings there must keep these ids.
+    /// Fixed section anchor in `docs/api-keys.md`; the headings there must keep these ids.
     var keyGuideAnchor: String {
         switch self {
         case .claude: return "claude"
