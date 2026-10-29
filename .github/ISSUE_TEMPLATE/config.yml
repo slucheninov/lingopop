@@ -5,4 +5,4 @@ contact_links:
     about: Install instructions, getting API keys, and common gotchas live there.
   - name: Browse releases
     url: https://github.com/slucheninov/lingopop/releases
-    about: Latest binaries and per-version changelogs.
+    about: Latest releases and per-version changelogs.

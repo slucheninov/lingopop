@@ -2,7 +2,7 @@
 # Generates all public README screenshots via native SwiftUI/AppKit rendering.
 set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="$PROJECT_DIR/public-repo/docs/screenshots"
+OUT_DIR="$PROJECT_DIR/docs/screenshots"
 BUILD="/tmp/lingopop-screenshot-gen"
 mkdir -p "$OUT_DIR"
 swiftc -O -o "$BUILD" \

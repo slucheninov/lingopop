@@ -20,8 +20,3 @@ This compiles `scripts/render-screenshots.swift` (with `UI/HistoryMenuItemView.s
 | `settings-shortcuts.png` | Settings → Shortcuts tab (5 operations with hotkey pills) |
 | `settings-about.png` | Settings → About tab (app icon, version, Privacy Policy link) |
 | `history.png` | History window with search bar and fixture translation entries |
-
-## Old workflow (replaced)
-
-`scripts/capture-screenshots.sh` previously used `screencapture` with a timer delay.
-It has been replaced by the programmatic approach above.

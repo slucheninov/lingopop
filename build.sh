@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # LingoPop build wrapper.
-# We build into /tmp because the project lives in a sync'd Documents folder
-# (Apple File Provider attaches xattrs that break codesign).
+# We build into a temp dir because, if the checkout lives in a File-Provider-synced
+# folder such as iCloud Drive Documents, Apple File Provider attaches xattrs that
+# break codesign.
 
 set -euo pipefail
 

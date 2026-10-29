@@ -28,7 +28,7 @@ The project is generated with **XcodeGen** from `project.yml`; never edit `Lingo
 ```
 
 Why `build.sh` and not raw `xcodebuild`:
-- The project lives under `~/Documents/...` which has Apple File Provider sync — extended attributes leak into the build dir and break `codesign` ("resource fork, Finder information, or similar detritus not allowed"). `build.sh` builds into `/tmp/lingo-pop-build`, then copies the `.app` to `~/Applications/LingoPop.app` (a stable, non-synced, Finder-visible path), strips xattrs, and re-signs.
+- If the checkout lives in a File-Provider-synced folder (such as iCloud Drive Documents), Apple File Provider sync attaches extended attributes that leak into the build dir and break `codesign` ("resource fork, Finder information, or similar detritus not allowed"). `build.sh` builds into `/tmp/lingo-pop-build`, then copies the `.app` to `~/Applications/LingoPop.app` (a stable, non-synced, Finder-visible path), strips xattrs, and re-signs.
 - TCC (Accessibility permission) is bound to the path + code requirement. Always installing to `~/Applications/LingoPop.app` keeps the grant alive across rebuilds.
 
 One-time machine setup (only when starting on a new Mac, or after a cert refresh):
@@ -46,7 +46,9 @@ swift scripts/generate-icon.swift /tmp/icon.png
 # then re-slice through sips and replace files in App/Assets.xcassets/AppIcon.appiconset/
 ```
 
-No test target. No linter.
+### Tests and CI
+
+Unit tests: `./scripts/test.sh` (runs XcodeGen, then the host-less XCTest suite). Localization catalog consistency: `python3 scripts/check-localizations.py`. CI lives in `.github/workflows/ci.yml`; its required check is `build-and-test` (the `package` job runs on push to `main`). No linter.
 
 ### Release builds (distribution)
 
@@ -75,19 +77,12 @@ The minimum macOS is set in two places (must match): `MACOSX_DEPLOYMENT_TARGET` 
 
 ### Public releases via GitHub Actions
 
-Source lives in a **private** repo (`slucheninov/lingo-pop`); built `.app` artifacts and product docs ship from a separate **public** repo (`slucheninov/lingopop`).
+Source, issues, docs and release artifacts all live in this one public repo (`slucheninov/lingopop`).
 
-Two flows:
-- **Tag push** (`v0.2.0`) in private → `.github/workflows/release.yml` builds on `macos-14`, runs `scripts/release.sh`, then uses a fine-grained PAT to `gh release create` in the public repo. CI signs ad-hoc (no Apple Developer Program), so end users get a one-time Gatekeeper warning.
-- **Doc sync** (manual) — `./scripts/sync-public-repo.sh` clones the public repo, rsyncs `public-repo/` into it (preserving any screenshot binaries already committed there), commits, and pushes. Run this whenever README / CHANGELOG / issue templates change.
+- **Tag push** (`v0.2.0`) → `.github/workflows/release.yml` builds on `macos-15` (Xcode 16.4), runs `scripts/release.sh`, and publishes a GitHub Release in this same repo using the built-in `GITHUB_TOKEN` (no PAT, no extra secrets or variables). Assets: `LingoPop-<version>-mac-universal.dmg`, `.zip` and `SHA256SUMS`. CI signs ad-hoc (no Apple Developer Program), so end users get a one-time Gatekeeper warning.
+- **Cutting a release**: `./scripts/publish-release.sh prepare <version> [--skip-build]` bumps the version on branch `release/v<version>` and opens a PR; after it is merged, `./scripts/publish-release.sh tag <version>` tags `origin/main` as `v<version>`, pushes the tag, waits for the Release workflow and verifies the assets.
 
-The public repo's content (README, LICENSE, PRIVACY, CHANGELOG, issue templates, screenshots placeholder) lives under `public-repo/` here — that's the source of truth, the public repo is downstream.
-
-Configuration:
-- Private repo secret `PUBLIC_REPO_TOKEN` — fine-grained PAT with `Contents: Read and write` on the public repo only.
-- Private repo variable `PUBLIC_REPO` — `owner/repo` of the public repo.
-
-End-to-end setup is in `RELEASING.md`.
+End-to-end steps are in `RELEASING.md`.
 
 ## Architecture
 
@@ -174,17 +169,13 @@ The user has no Apple Developer Program membership, so we can't use `NSUbiquitou
 - **`Models/Languages.swift`** — the single language table: `Languages.all` is a `[LanguageInfo]` (`name`, `code`, optional `deepLCode` / `microsoftCode` overrides, `nlLanguages` for the detector, `inQuickList`). `Languages.quickList`, the `LanguageCodes` helpers (`Models/LanguageCodes.swift`: `code(for:)`, `deepLCode(for:)`, `microsoftCode(for:)`) and `LanguageDetector` (`Core/LanguageDetector.swift`, via `Languages.name(for:)`) are all derived from it. To add a language, add one `LanguageInfo` line; the order of `quick: true` entries is the UI order.
 - **`UI/PermissionAlert.swift`** — shared Accessibility / Screen Recording alerts.
 - **`UI/ProviderType+UI.swift`** — UI-facing helpers on `ProviderType` (display names, colors, ordering) so views don't duplicate provider lists.
-- **`ProviderType.keyGuideURL`** (`UI/ProviderType+UI.swift`) deep-links each provider's tab to its section in `public-repo/docs/api-keys.md` (published at github.com/slucheninov/lingopop). Section headings in that file must keep the anchors claude/openai/gemini/grok/google-free/google-translate/deepl/microsoft-translator.
+- **`ProviderType.keyGuideURL`** (`UI/ProviderType+UI.swift`) deep-links each provider's tab to its section in `docs/api-keys.md`. Section headings in that file must keep the anchors claude/openai/gemini/grok/google-free/google-translate/deepl/microsoft-translator.
 - **`Providers/ProviderHTTP.swift`** — see Providers above.
 - **`Models/UserFacingError.swift`** — protocol for all user-visible error enums (`userSummary`, optional `userDetail`).
 - **`Models/TranslationError.swift`** — `TranslationError`, `FallbackInfo`, `redactedURL`, `sanitizedHTTPBodyDetail` (split out of `TranslationResult.swift`).
 - **`UI/PopupError.swift`** — `PopupError.from(_:)`, the single mapper from any `Error` to popup content. `CancellationError` is never presented; callers drop it before mapping.
 - **`UI/PopupLayout.swift`** — popup geometry and timing constants.
 - **`UI/PopupActions.swift`** — the `PopupActions` protocol (retry, replace, retranslate, rewrite, explain, translateOCR, popupDidClose); see the lifecycle section above.
-
-### Code audits
-
-Past audits and their per-finding status: [docs/code-audit-2026-06-12.md](docs/code-audit-2026-06-12.md), [docs/code-audit-2026-10-15.md](docs/code-audit-2026-10-15.md).
 
 ### Screen Translate components
 
