@@ -1,33 +1,12 @@
 ---
-description: Always bump MARKETING_VERSION in project.yml after code changes
+description: Do not bump MARKETING_VERSION in feature changes; versions are bumped only by the release script
 alwaysApply: true
 ---
 
-# Bump MARKETING_VERSION on every change
+# Do not bump versions in feature changes
 
-Whenever you make a product/code change in this repo (features, fixes, refactors, UI, providers, scripts that affect the shipped app), bump `MARKETING_VERSION` in `project.yml` as part of the same change set.
+Do **not** change `MARKETING_VERSION` or `CURRENT_PROJECT_VERSION` in `project.yml` as part of feature, fix, refactor, UI or provider pull requests.
 
-## How
+Versions are bumped only by `scripts/publish-release.sh prepare <version>` (see `RELEASING.md`), which creates the release branch and PR.
 
-1. Read `settings.base.MARKETING_VERSION` in `project.yml` (semver `MAJOR.MINOR.PATCH`).
-2. Bump the **patch** segment by 1 (e.g. `0.3.7` → `0.3.8`).
-3. Bump **minor** only when the user asks for a minor/major release, or the change is clearly a large feature release they named as such.
-4. Do **not** change `CURRENT_PROJECT_VERSION` unless the user explicitly asks.
-5. Bump **once per change set** (not once per file edit). If the version was already bumped for this same task, do not bump again.
-6. Include the `project.yml` version bump in the same commit when the user asks to commit.
-
-## Skip when
-
-- Docs-only / comment-only / rule-only edits that do not affect the built app
-- The user explicitly says not to bump the version
-- Pure exploration / Q&A with no file writes
-
-## Example
-
-```yaml
-# before
-MARKETING_VERSION: "0.3.7"
-
-# after a fix or feature
-MARKETING_VERSION: "0.3.8"
-```
+Instead, note user-facing changes for `CHANGELOG.md`; the release flow requires a `## v<version>` section there (added when preparing the release).
