@@ -4,6 +4,13 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.3.19 — 2026-10-29
+
+- The popup now stays inside the visible screen area: near the bottom edge it no longer covers the Dock or goes off-screen as the result loads
+- Popup buttons keep their full labels in Polish, Ukrainian and German; if a row does not fit, buttons fall back to icons with tooltips
+- Screen Translate no longer shows a stale result when a new capture was started while text recognition was still running
+- Internal: the project now builds in Swift 6 language mode (Xcode 16+)
+
 ## v0.3.18 — 2026-10-16
 
 - Roomier, better aligned menu-bar menu; new About item
