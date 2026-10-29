@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  auto_approvals:
+    allow_author_approval: false
+  high_level_summary: true
+  review_progress: true
+  commit_status: true
+  fail_commit_status: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!docs/screenshots/**"
+    - "!**/*.png"
+    - "!App/Assets.xcassets/**"
+  path_instructions:
+    - path: "**/*.swift"
+      instructions: |
+        Project rules live in AGENTS.md. Check:
+        - MainActor isolation and Swift concurrency correctness (data races, unstructured Tasks, cancellation; CancellationError is never presented to the user).
+        - Never build user-visible text from `ProviderType.rawValue`; use `displayName`. Never rename persisted raw values or UserDefaults keys.
+        - User-visible strings use `String(localized:)` (AppKit / non-View) or LocalizedStringKey (SwiftUI); ternaries and String variables bypass localization. Do not localize persisted identifiers, language names in `Languages.all`, AI prompts, logs, or HTTP/JSON fields.
+        - Providers must go through `ProviderHTTP` (shared session, https-only, no cross-origin redirects).
+        - Never log API keys or persist them outside `SecretStorage`; never put API keys in iCloud-synced settings.json.
+        - New `@Published` in SettingsStore must also be added to `installAutoSave()`, `Persisted`, `apply(_:)` and `save()`.
+    - path: "App/Localizable.xcstrings"
+      instructions: |
+        Every translation (pl, uk, de) must keep the same format specifiers (`%@`, `%lld`, `%1$@`, `%%`), newlines and special characters (`…`, `→`, `⌘`, `{{targetLanguage}}`) as the English key. Brand names (LingoPop, Claude, OpenAI, Gemini, Grok, DeepL, Google, Microsoft, iCloud, macOS) stay untranslated. Terminology follows macOS in each language as described in AGENTS.md (Localization section). Every key without `shouldTranslate: false` needs en, pl, uk and de.
+    - path: ".github/workflows/**"
+      instructions: |
+        Third-party actions must be pinned by commit SHA. Use least-privilege `permissions`. Do not use `pull_request_target`. No secrets exposed to jobs triggered by pull requests.
+    - path: "scripts/**"
+      instructions: |
+        Bash scripts use strict mode (`set -euo pipefail`), must be shellcheck-clean, quote variables, and must never push directly to `main`.
+    - path: "project.yml"
+      instructions: |
+        `MACOSX_DEPLOYMENT_TARGET` (settings.base) and `deploymentTarget.macOS` (options) must match (currently 13.0). The `LingoPopTests` target must stay host-less (no TEST_HOST / BUNDLE_LOADER) and must not compile App/, UI/, SettingsStore.swift or providers.
+  tools:
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    swiftlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    markdownlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    languagetool:
+      enabled: false
+
+chat:
+  auto_reply: true
