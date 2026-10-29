@@ -23,6 +23,7 @@ python3 scripts/check-localizations.py
 
 - Open pull requests against `main` only. Direct pushes to `main` are blocked.
 - CI (`build-and-test`) must be green before a PR can be merged.
+- Pull requests are reviewed by CodeRabbit (config in `.coderabbit.yaml`). Merging requires its approval plus green `build-and-test`: resolve or answer its comments, and re-trigger with `@coderabbitai review` after pushing fixes.
 - Update `AGENTS.md` if you change the architecture or conventions.
 - Include screenshots for UI changes.
 
