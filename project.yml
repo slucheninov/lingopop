@@ -65,3 +65,30 @@ targets:
         SWIFT_EMIT_LOC_STRINGS: YES
     dependencies:
       - package: HotKey
+    scheme:
+      testTargets: [LingoPopTests]
+  LingoPopTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Tests/LingoPopTests
+      - Core/CloudMerge.swift
+      - Core/CloudStorage.swift
+      - Core/PromptBuilder.swift
+      - Core/UsagePricing.swift
+      - Models/AIOperation.swift
+      - Models/ProviderConfig.swift
+      - Models/ProviderKeyedDictionary.swift
+      - Models/LanguageCodes.swift
+      - Models/Languages.swift
+      - Models/HotkeyConfig.swift
+    dependencies:
+      - package: HotKey
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lingopop.tests
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: NO
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""

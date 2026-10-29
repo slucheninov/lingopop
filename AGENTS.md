@@ -50,6 +50,8 @@ swift scripts/generate-icon.swift /tmp/icon.png
 
 Unit tests: `./scripts/test.sh` (runs XcodeGen, then the host-less XCTest suite). Localization catalog consistency: `python3 scripts/check-localizations.py`. CI lives in `.github/workflows/ci.yml`; its required check is `build-and-test` (the `package` job runs on push to `main`). No linter.
 
+Test target `LingoPopTests` (`bundle.unit-test`, defined in `project.yml`, attached to the `LingoPop` scheme) is **host-less**: no `TEST_HOST` / `BUNDLE_LOADER`, no `@testable import LingoPop`. The pure source files under test are compiled directly into the test bundle through its `sources:` list. Never add `App/`, `UI/`, `SettingsStore.swift` or providers there (they pull in AppKit state and the app host); `ProviderDraft` is out of scope for the same reason. To test a new file, add a test in `Tests/LingoPopTests/`, add the source file to the `LingoPopTests` `sources:` in `project.yml` (plus any further pure model file it needs to compile), then run `./scripts/test.sh`.
+
 ### Release builds (distribution)
 
 `scripts/release.sh` produces signed artifacts in `dist/` for shipping. It's separate from `build.sh` (which is dev-only: Debug, host arch only).
