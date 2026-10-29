@@ -17,8 +17,11 @@ cleanup() {
     set +e
     if [[ "$status" -ne 0 && -n "$ROLLBACK_BRANCH" ]]; then
         git reset -q HEAD -- project.yml; git checkout -q -- project.yml
-        git switch -q main && git branch -D "$ROLLBACK_BRANCH" >/dev/null 2>&1
-        echo "→ Rolled back: branch $ROLLBACK_BRANCH removed, back on main." >&2
+        if git switch -q main && git branch -D "$ROLLBACK_BRANCH" >/dev/null 2>&1; then
+            echo "→ Rolled back: branch $ROLLBACK_BRANCH removed, back on main (CHANGELOG.md edits kept)." >&2
+        else
+            echo "→ Rollback incomplete: could not switch to main and delete $ROLLBACK_BRANCH; check 'git status'." >&2
+        fi
     fi
     [[ -z "$WORK_DIR" || ! -d "$WORK_DIR" ]] || rm -rf -- "$WORK_DIR"
     exit "$status"
@@ -39,8 +42,8 @@ Usage:
   ./scripts/publish-release.sh prepare <X.Y.Z> [--skip-build]
   ./scripts/publish-release.sh tag <X.Y.Z>
 
-prepare  Requires a clean, up-to-date main and a "## v<X.Y.Z>" section in
-         CHANGELOG.md. Bumps MARKETING_VERSION / CURRENT_PROJECT_VERSION in
+prepare  Requires an up-to-date main, clean except CHANGELOG.md, with a "## v<X.Y.Z>" section in
+         CHANGELOG.md (uncommitted edit is committed with the release). Bumps MARKETING_VERSION / CURRENT_PROJECT_VERSION in
          project.yml, runs ./build.sh (unless --skip-build), commits
          "Release v<X.Y.Z>" on branch release/v<X.Y.Z>, pushes it and opens a PR.
          Never pushes to main.
@@ -155,7 +158,8 @@ cmd_prepare() {
     current_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
     [[ "$current_branch" == "main" ]] ||
         die "prepare must run on main (current: ${current_branch:-detached HEAD})"
-    [[ -z "$(git status --porcelain)" ]] || die "worktree must be clean"
+    [[ -z "$(git status --porcelain | awk 'substr($0, 4) != "CHANGELOG.md"')" ]] ||
+        die "worktree must be clean (only CHANGELOG.md may have uncommitted changes)"
     require_gh
 
     PHASE="fetch"
@@ -191,20 +195,21 @@ cmd_prepare() {
     fi
 
     PHASE="commit"
-    git add -- project.yml
+    git add -- project.yml CHANGELOG.md
     git commit -m "Release $tag"
     ROLLBACK_BRANCH=""
     PHASE="push branch"
-    git push -u origin "$branch"
+    git push -u origin "$branch" || die "push failed; the release commit is on local branch $branch. Retry: git push -u origin $branch && gh pr create --fill --base main --head $branch. Abort: git switch main && git branch -D $branch"
 
     PHASE="open pull request"
-    gh pr create --fill --base main --head "$branch"
+    gh pr create --fill --base main --head "$branch" ||
+        die "PR creation failed; branch $branch is pushed. Retry: gh pr create --fill --base main --head $branch. Abort: git push origin --delete $branch && git switch main && git branch -D $branch"
     echo "✓ Merge the PR, then run: ./scripts/publish-release.sh tag $version"
 }
 
 cmd_tag() {
     local version=$1 tag="v$1"
-    local main_version commit repo run_id run_url attempt=0
+    local main_version commit repo run_id run_url since attempt=0
 
     require_gh
 
@@ -225,14 +230,19 @@ cmd_tag() {
     PHASE="push tag"
     git tag -a "$tag" "$commit" -m "Release $tag"
     echo "→ Pushing $tag ($commit)..."
-    git push origin "refs/tags/$tag"
+    since=$(date -u -v-30S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '30 seconds ago' +%Y-%m-%dT%H:%M:%SZ)
+    if ! git push origin "refs/tags/$tag"; then
+        git tag -d "$tag" >/dev/null
+        die "tag push failed; local tag $tag deleted"
+    fi
 
     PHASE="locate release workflow"
     run_id=""
-    while [[ -z "$run_id" && "$attempt" -lt 30 ]]; do
+    # Only accept a run created after the tag push, never a stale one from an earlier tag of the same name.
+    while [[ -z "$run_id" && "$attempt" -lt 45 ]]; do
         run_id=$(gh run list --repo "$repo" --workflow Release --event push --branch "$tag" \
-            --limit 5 --json databaseId,headSha \
-            --jq ".[] | select(.headSha == \"$commit\") | .databaseId" | sed -n '1p')
+            --limit 10 --json databaseId,headSha,createdAt \
+            --jq ".[] | select(.headSha == \"$commit\" and .createdAt >= \"$since\") | .databaseId" | sed -n '1p')
         [[ -n "$run_id" ]] || { sleep 2; attempt=$((attempt + 1)); }
     done
     [[ -n "$run_id" ]] || die "could not find the Release workflow run for $tag"
