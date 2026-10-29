@@ -77,13 +77,14 @@ targets:
       - Core/CloudStorage.swift
       - Core/PromptBuilder.swift
       - Core/UsagePricing.swift
+      - Core/ActionRowMetrics.swift
       - Models/AIOperation.swift
       - Models/ProviderConfig.swift
       - Models/ProviderKeyedDictionary.swift
       - Models/LanguageCodes.swift
       - Models/Languages.swift
       - Models/HotkeyConfig.swift
-      - UI/PopupPlacement.swift
+      - Core/PopupPlacement.swift
     dependencies:
       - package: HotKey
     settings:

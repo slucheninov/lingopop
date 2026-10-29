@@ -14,7 +14,7 @@ struct PopupView: View {
             content
         }
         .padding(PopupLayout.contentPadding)
-        .frame(width: layout.dynamicWidth(for: state.phase), alignment: .topLeading)
+        .frame(width: panelWidth, alignment: .topLeading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PopupLayout.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: PopupLayout.cornerRadius, style: .continuous)
@@ -23,6 +23,27 @@ struct PopupView: View {
     }
 
     private var layout: PopupLayout { PopupLayout(fontSize: popupFontSize) }
+
+    /// Text-driven width, widened (up to `maxWidth`) so the localized action row fits.
+    private var panelWidth: CGFloat {
+        let base = layout.dynamicWidth(for: state.phase)
+        var titles: [String] = []
+        switch state.phase {
+        case .result(let r):
+            titles.append(String(localized: "Copy"))
+            if r.operation != .screenTranslate { titles.append(String(localized: "Replace")) }
+            titles.append(String(localized: "Rewrite"))
+            if r.operation != .explain { titles.append(String(localized: "Explain")) }
+        case .ocr:
+            titles = [String(localized: "Copy"), String(localized: "Translate")]
+        default: return base
+        }
+        let retry = state.availableRetryProviders.isEmpty ? nil : String(localized: "Retry")
+        var chevronMenus = 0
+        if case .ocr = state.phase, !state.availableTranslateProviders.isEmpty { chevronMenus = 1 }
+        let row = ActionRowMetrics.width(titles: titles, menuTitle: retry, chevronMenus: chevronMenus)
+        return min(PopupLayout.maxWidth, max(base, row))
+    }
 
     private var dragHandle: some View {
         HStack {
@@ -103,22 +124,33 @@ private struct OCRContent: View {
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 8)
-        HStack(spacing: 8) {
-            PopupActionButton(title: "Copy", systemImage: "doc.on.doc") { copyToPasteboard(text) }
-            translateControls
-            Spacer(minLength: 0)
-            RetryMenu(state: state)
+        ViewThatFits(in: .horizontal) {
+            ocrRow(iconOnly: false)
+            ocrRow(iconOnly: true)
         }
     }
 
-    private var translateControls: some View {
+    private func ocrRow(iconOnly: Bool) -> some View {
+        HStack(spacing: 8) {
+            PopupActionButton(title: "Copy", systemImage: "doc.on.doc", action: { copyToPasteboard(text) }, iconOnly: iconOnly)
+            translateControls(iconOnly: iconOnly)
+            Spacer(minLength: 0)
+            RetryMenu(state: state, iconOnly: iconOnly)
+        }
+    }
+
+    private func translateControls(iconOnly: Bool) -> some View {
         HStack(spacing: 4) {
             Button(action: {
                 let provider = state.activeTranslateProvider ?? state.availableTranslateProviders.first
                 guard let provider else { return }
                 state.actions?.translateOCR(text, with: provider)
             }) {
-                Label("Translate", systemImage: "globe")
+                if iconOnly {
+                    Label("Translate", systemImage: "globe").labelStyle(.iconOnly)
+                } else {
+                    Label("Translate", systemImage: "globe").lineLimit(1).fixedSize()
+                }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
@@ -270,23 +302,32 @@ private struct ResultActionBar: View {
     let result: TranslationResult
 
     var body: some View {
+        // Full labels when they fit; otherwise icon-only (tooltips keep the names)
+        // instead of letting SwiftUI squeeze each title down to a single letter.
+        ViewThatFits(in: .horizontal) {
+            row(iconOnly: false)
+            row(iconOnly: true)
+        }
+    }
+
+    private func row(iconOnly: Bool) -> some View {
         HStack(spacing: 8) {
-            PopupActionButton(title: "Copy", systemImage: "doc.on.doc") { copyToPasteboard(result.translated) }
+            PopupActionButton(title: "Copy", systemImage: "doc.on.doc", action: { copyToPasteboard(result.translated) }, iconOnly: iconOnly)
             if result.operation != .screenTranslate {
-                PopupActionButton(title: "Replace", systemImage: "arrow.uturn.left") {
+                PopupActionButton(title: "Replace", systemImage: "arrow.uturn.left", action: {
                     state.actions?.replace(with: result.translated)
-                }
+                }, iconOnly: iconOnly)
             }
-            PopupActionButton(title: "Rewrite", systemImage: "wand.and.stars") {
+            PopupActionButton(title: "Rewrite", systemImage: "wand.and.stars", action: {
                 state.actions?.rewrite(result.translated)
-            }
+            }, iconOnly: iconOnly)
             if result.operation != .explain {
-                PopupActionButton(title: "Explain", systemImage: "text.magnifyingglass") {
+                PopupActionButton(title: "Explain", systemImage: "text.magnifyingglass", action: {
                     state.actions?.explain(result.translated)
-                }
+                }, iconOnly: iconOnly)
             }
             Spacer(minLength: 0)
-            RetryMenu(state: state)
+            RetryMenu(state: state, iconOnly: iconOnly)
         }
     }
 }
