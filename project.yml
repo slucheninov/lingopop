@@ -83,6 +83,7 @@ targets:
       - Models/LanguageCodes.swift
       - Models/Languages.swift
       - Models/HotkeyConfig.swift
+      - UI/PopupPlacement.swift
     dependencies:
       - package: HotKey
     settings:

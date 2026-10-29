@@ -10,6 +10,13 @@ final class PopupWindow {
     private var keyMonitor: Any?
     private var resizeObserver: NSObjectProtocol?
     private var isClosing: Bool = false
+    /// Where the popup was requested and the visible area of that screen, kept so the
+    /// panel can be re-placed when its content (and thus size) changes.
+    private var anchor: NSPoint = .zero
+    private var anchorVisibleFrame: NSRect = .zero
+    /// Top-left corner of the frame we last set; AppKit's resize keeps it fixed, so a
+    /// different value means the user dragged the panel.
+    private var lastTopLeft: NSPoint = .zero
     let state: PopupState
     /// Weak: the actions object (AppDelegate) owns this window.
     private weak var actions: PopupActions?
@@ -100,8 +107,12 @@ final class PopupWindow {
         // The shadow of a transparent borderless panel is cached; refresh it on resize.
         resizeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResizeNotification, object: panel, queue: .main
-        ) { [weak panel] _ in
-            panel?.invalidateShadow()
+        ) { [weak self, weak panel] _ in
+            guard let self, let panel else { return }
+            MainActor.assumeIsolated {
+                panel.invalidateShadow()
+                self.keepOnScreen(panel)
+            }
         }
 
         return panel
@@ -121,24 +132,37 @@ final class PopupWindow {
         let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) })
             ?? NSScreen.main
             ?? NSScreen.screens.first
-        let bounds = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
+        anchor = point
+        anchorVisibleFrame = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
 
-        let offset = PopupLayout.cursorOffset
-        let inset = PopupLayout.screenEdgeInset
-        var origin = NSPoint(x: point.x + offset, y: point.y - size.height - offset)
-        if origin.x + size.width > bounds.maxX {
-            origin.x = bounds.maxX - size.width - inset
+        let frame = placement(for: size)
+        lastTopLeft = NSPoint(x: frame.minX, y: frame.maxY)
+        panel.setFrame(frame, display: true)
+    }
+
+    private func placement(for size: NSSize) -> NSRect {
+        PopupPlacement.frame(
+            size: size, anchor: anchor, visibleFrame: anchorVisibleFrame,
+            offset: PopupLayout.cursorOffset, inset: PopupLayout.screenEdgeInset
+        )
+    }
+
+    /// Re-places the panel after a resize so growing content never runs under the Dock
+    /// or off-screen. If the user dragged the panel it is only clamped into the screen.
+    private func keepOnScreen(_ panel: NSPanel) {
+        guard panel.isVisible, !anchorVisibleFrame.isEmpty else { return }
+        let current = panel.frame
+        let wasDragged = abs(current.minX - lastTopLeft.x) > 0.5 || abs(current.maxY - lastTopLeft.y) > 0.5
+        let target: NSRect
+        if wasDragged {
+            let bounds = anchorVisibleFrame.insetBy(dx: PopupLayout.screenEdgeInset, dy: PopupLayout.screenEdgeInset)
+            target = PopupPlacement.clamp(current, into: bounds)
+        } else {
+            target = placement(for: current.size)
         }
-        if origin.x < bounds.minX {
-            origin.x = bounds.minX + inset
-        }
-        if origin.y < bounds.minY {
-            origin.y = point.y + offset
-        }
-        if origin.y + size.height > bounds.maxY {
-            origin.y = bounds.maxY - size.height - inset
-        }
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        guard abs(target.minX - current.minX) > 0.5 || abs(target.minY - current.minY) > 0.5 else { return }
+        lastTopLeft = NSPoint(x: target.minX, y: target.maxY)
+        panel.setFrameOrigin(target.origin)
     }
 
     private func installEventMonitors() {
