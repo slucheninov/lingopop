@@ -25,9 +25,12 @@ enum ScreenOCR {
     /// Observations are sorted top-to-bottom (highest Y first in Vision's normalised coords).
     static func recognize(image: CGImage) async throws -> String {
         // Vision's `perform` is synchronous; run it off the caller's executor.
-        try await Task.detached(priority: .userInitiated) {
+        let text = try await Task.detached(priority: .userInitiated) {
             try performRecognition(image: image)
         }.value
+        // A detached task ignores the caller's cancellation; drop a stale result here.
+        try Task.checkCancellation()
+        return text
     }
 
     private static func performRecognition(image: CGImage) throws -> String {
