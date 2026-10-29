@@ -22,6 +22,13 @@ final class ActionRowMetricsTests: XCTestCase {
         }
     }
 
+    func test_chevronMenuWidensRow() {
+        let titles = ["Copy", "Translate"]
+        let without = ActionRowMetrics.width(titles: titles, menuTitle: "Retry")
+        let with = ActionRowMetrics.width(titles: titles, menuTitle: "Retry", chevronMenus: 1)
+        XCTAssertGreaterThan(with, without)
+    }
+
     func test_emptyRowIsZero() {
         XCTAssertEqual(ActionRowMetrics.width(titles: [], menuTitle: nil), 0)
     }

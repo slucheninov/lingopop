@@ -39,7 +39,9 @@ struct PopupView: View {
         default: return base
         }
         let retry = state.availableRetryProviders.isEmpty ? nil : String(localized: "Retry")
-        let row = ActionRowMetrics.width(titles: titles, menuTitle: retry)
+        var chevronMenus = 0
+        if case .ocr = state.phase, !state.availableTranslateProviders.isEmpty { chevronMenus = 1 }
+        let row = ActionRowMetrics.width(titles: titles, menuTitle: retry, chevronMenus: chevronMenus)
         return min(PopupLayout.maxWidth, max(base, row))
     }
 

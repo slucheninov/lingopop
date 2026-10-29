@@ -126,6 +126,7 @@ struct RetryMenu: View {
             .fixedSize()
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .popupButtonHelp("Retry")
         }
     }
 }
