@@ -17,6 +17,9 @@ final class PopupWindow {
     /// Top-left corner of the frame we last set; AppKit's resize keeps it fixed, so a
     /// different value means the user dragged the panel.
     private var lastTopLeft: NSPoint = .zero
+    /// Set once the user drags the panel; kept until the next `position` so a corrective
+    /// clamp does not make a later resize snap the panel back to the anchor.
+    private var isUserPlaced = false
     let state: PopupState
     /// Weak: the actions object (AppDelegate) owns this window.
     private weak var actions: PopupActions?
@@ -135,6 +138,7 @@ final class PopupWindow {
         anchor = point
         anchorVisibleFrame = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 800, height: 600)
 
+        isUserPlaced = false
         let frame = placement(for: size)
         lastTopLeft = NSPoint(x: frame.minX, y: frame.maxY)
         panel.setFrame(frame, display: true)
@@ -152,10 +156,14 @@ final class PopupWindow {
     private func keepOnScreen(_ panel: NSPanel) {
         guard panel.isVisible, !anchorVisibleFrame.isEmpty else { return }
         let current = panel.frame
-        let wasDragged = abs(current.minX - lastTopLeft.x) > 0.5 || abs(current.maxY - lastTopLeft.y) > 0.5
+        if abs(current.minX - lastTopLeft.x) > 0.5 || abs(current.maxY - lastTopLeft.y) > 0.5 {
+            isUserPlaced = true
+        }
         let target: NSRect
-        if wasDragged {
-            let bounds = anchorVisibleFrame.insetBy(dx: PopupLayout.screenEdgeInset, dy: PopupLayout.screenEdgeInset)
+        if isUserPlaced {
+            // The panel may have been dragged to another display: clamp into the one it is on now.
+            let visibleFrame = panel.screen?.visibleFrame ?? anchorVisibleFrame
+            let bounds = visibleFrame.insetBy(dx: PopupLayout.screenEdgeInset, dy: PopupLayout.screenEdgeInset)
             target = PopupPlacement.clamp(current, into: bounds)
         } else {
             target = placement(for: current.size)
