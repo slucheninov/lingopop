@@ -16,7 +16,7 @@ Because there is no Apple Developer Program membership, the app is ad-hoc signed
 
 ## Cutting a release
 
-1. Make sure `main` is green in CI and `CHANGELOG.md` is ready for the new version.
+1. Make sure `main` is green in CI and `CHANGELOG.md` has a `## v0.3.19 — YYYY-MM-DD` section for the new version (`prepare` refuses to run without it).
 2. Prepare the release:
 
    ```bash

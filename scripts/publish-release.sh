@@ -1,41 +1,26 @@
 #!/usr/bin/env bash
-# Publish a LingoPop release from private main to the public product repository.
+# Release flow for the single public repository. `main` is protected (PR-only):
+#   prepare <version>  bump the version on release/v<version> and open a PR
+#   tag <version>      after the PR is merged: tag origin/main, wait for the
+#                      Release workflow, verify the published assets
 
 set -Eeuo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PUBLIC_REPO="${PUBLIC_REPO:-slucheninov/lingopop}"
 WORK_DIR=""
 PHASE="startup"
-PROJECT_BACKUP=""
-CHANGELOG_BACKUP=""
-RELEASE_COMMITTED=0
+ROLLBACK_BRANCH=""
 
 cleanup() {
     local status=$?
     trap - ERR
     set +e
-    if [[ "$RELEASE_COMMITTED" -eq 0 ]]; then
-        if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-            if [[ -n "$PROJECT_BACKUP" && -f "$PROJECT_BACKUP" ]]; then
-                if ! git -C "$PROJECT_DIR" diff --cached --quiet -- project.yml; then
-                    git -C "$PROJECT_DIR" reset -q HEAD -- project.yml
-                fi
-                cp "$PROJECT_BACKUP" "$PROJECT_DIR/project.yml"
-                echo "→ Restored project.yml because the release commit was not created." >&2
-            fi
-            if [[ -n "$CHANGELOG_BACKUP" && -f "$CHANGELOG_BACKUP" ]]; then
-                if ! git -C "$PROJECT_DIR" diff --cached --quiet -- public-repo/CHANGELOG.md; then
-                    git -C "$PROJECT_DIR" reset -q HEAD -- public-repo/CHANGELOG.md
-                fi
-                cp "$CHANGELOG_BACKUP" "$PROJECT_DIR/public-repo/CHANGELOG.md"
-                echo "→ Restored public-repo/CHANGELOG.md because the release commit was not created." >&2
-            fi
-        fi
+    if [[ "$status" -ne 0 && -n "$ROLLBACK_BRANCH" ]]; then
+        git reset -q HEAD -- project.yml; git checkout -q -- project.yml
+        git switch -q main && git branch -D "$ROLLBACK_BRANCH" >/dev/null 2>&1
+        echo "→ Rolled back: branch $ROLLBACK_BRANCH removed, back on main." >&2
     fi
-    if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then
-        rm -rf -- "$WORK_DIR"
-    fi
+    [[ -z "$WORK_DIR" || ! -d "$WORK_DIR" ]] || rm -rf -- "$WORK_DIR"
     exit "$status"
 }
 
@@ -49,23 +34,19 @@ trap cleanup EXIT
 trap on_error ERR
 
 usage() {
-    cat <<'EOF'
+    cat <<'USAGE'
 Usage:
-  ./scripts/publish-release.sh patch|minor|major|X.Y.Z --note TEXT [--note TEXT ...] [options]
-  ./scripts/publish-release.sh patch|minor|major|X.Y.Z --notes-file PATH [options]
+  ./scripts/publish-release.sh prepare <X.Y.Z> [--skip-build]
+  ./scripts/publish-release.sh tag <X.Y.Z>
 
-Options:
-  --dry-run       Print the release plan. No files, Git refs, remotes, or network are changed.
-  --skip-build    Skip ./build.sh (risky; intended only when the same commit was already verified).
-  --message TEXT  Commit message (default: Release vX.Y.Z).
-  --note TEXT     Add one changelog bullet. Repeat for multiple release notes.
-  --notes-file PATH
-                  Read the changelog body as Markdown from PATH. Mutually exclusive with --note.
-  -h, --help      Show this help.
-
-To resume a partially completed release, invoke the script with the exact X.Y.Z.
-Release notes are not required for a validated resume because they are already committed.
-EOF
+prepare  Requires a clean, up-to-date main and a "## v<X.Y.Z>" section in
+         CHANGELOG.md. Bumps MARKETING_VERSION / CURRENT_PROJECT_VERSION in
+         project.yml, runs ./build.sh (unless --skip-build), commits
+         "Release v<X.Y.Z>" on branch release/v<X.Y.Z>, pushes it and opens a PR.
+         Never pushes to main.
+tag      Run after the PR is merged. Tags origin/main as v<X.Y.Z>, pushes the tag,
+         waits for the Release workflow and verifies the published assets.
+USAGE
 }
 
 die() {
@@ -87,21 +68,9 @@ version_gt() {
         (( l_major == r_major && l_minor == r_minor && l_patch > r_patch ))
 }
 
-bump_version() {
-    local current=$1 kind=$2
-    local major minor patch
-    IFS=. read -r major minor patch <<< "$current"
-    case "$kind" in
-        patch) patch=$((patch + 1)) ;;
-        minor) minor=$((minor + 1)); patch=0 ;;
-        major) major=$((major + 1)); minor=0; patch=0 ;;
-        *) die "internal error: unsupported bump '$kind'" ;;
-    esac
-    printf '%s.%s.%s\n' "$major" "$minor" "$patch"
-}
-
-read_project_value() {
-    local file=$1 key=$2
+# Print the value of a unique `KEY: "value"` line from a project.yml stream.
+project_value() {
+    local key=$1
     awk -v key="$key" '
         $1 == key ":" {
             value=$2
@@ -110,500 +79,209 @@ read_project_value() {
             count++
         }
         END { if (count != 1) exit 2 }
-    ' "$file"
-}
-
-project_value_at_commit() {
-    local commit=$1 key=$2
-    git show "$commit:project.yml" | awk -v key="$key" '
-        $1 == key ":" {
-            value=$2
-            gsub(/^"|"$/, "", value)
-            print value
-            count++
-        }
-        END { if (count != 1) exit 2 }
     '
 }
 
+read_project_value() {
+    project_value "$2" < "$1"
+}
+
+# Number of "## v<version>" or "## [<version>]" headings on stdin.
 changelog_version_count() {
-    local file=$1 version=$2
-    awk -v prefix="## v$version" '
-        index($0, prefix) == 1 {
-            suffix = substr($0, length(prefix) + 1, 1)
-            if (suffix == "" || suffix ~ /[[:space:]]/) count++
-        }
-        END { print count + 0 }
-    ' "$file"
-}
-
-changelog_version_count_at_commit() {
-    local commit=$1 version=$2
-    git show "$commit:public-repo/CHANGELOG.md" 2>/dev/null | awk -v prefix="## v$version" '
-        index($0, prefix) == 1 {
-            suffix = substr($0, length(prefix) + 1, 1)
-            if (suffix == "" || suffix ~ /[[:space:]]/) count++
-        }
-        END { print count + 0 }
-    '
-}
-
-origin_repo_slug() {
-    local url=$1 slug
-    case "$url" in
-        git@github.com:*) slug=${url#git@github.com:} ;;
-        https://github.com/*) slug=${url#https://github.com/} ;;
-        ssh://git@github.com/*) slug=${url#ssh://git@github.com/} ;;
-        *) return 1 ;;
-    esac
-    slug=${slug%.git}
-    [[ "$slug" == */* ]] || return 1
-    printf '%s\n' "$slug"
-}
-
-is_valid_resume_commit() {
-    local target=$1 current_build=$2
-    local parent parent_version parent_build changed validation_dir status
-    parent=$(git rev-parse HEAD^ 2>/dev/null) || return 1
-    changed=$(git diff-tree --no-commit-id --name-only -r HEAD | LC_ALL=C sort)
-    [[ "$changed" == $'project.yml\npublic-repo/CHANGELOG.md' ]] || return 1
-    parent_version=$(project_value_at_commit "$parent" MARKETING_VERSION) || return 1
-    parent_build=$(project_value_at_commit "$parent" CURRENT_PROJECT_VERSION) || return 1
-    is_semver "$parent_version" || return 1
-    [[ "$parent_build" =~ ^[0-9]+$ ]] || return 1
-    version_gt "$target" "$parent_version" || return 1
-    (( current_build == parent_build + 1 )) || return 1
-    validation_dir=$(mktemp -d "${TMPDIR:-/tmp}/lingopop-resume-validate.XXXXXX") || return 1
-    (
-        git show "$parent:project.yml" > "$validation_dir/parent-project.yml" || exit 1
-        git show "HEAD:project.yml" > "$validation_dir/head-project.yml" || exit 1
-        awk -v version="$target" -v build="$current_build" '
-            $1 == "MARKETING_VERSION:" { sub(/"[^"]*"/, "\"" version "\""); marketing++; print; next }
-            $1 == "CURRENT_PROJECT_VERSION:" { sub(/"[^"]*"/, "\"" build "\""); current++; print; next }
-            { print }
-            END { if (marketing != 1 || current != 1) exit 2 }
-        ' "$validation_dir/parent-project.yml" > "$validation_dir/expected-project.yml" || exit 1
-        cmp -s "$validation_dir/expected-project.yml" "$validation_dir/head-project.yml" || exit 1
-
-        git show "$parent:public-repo/CHANGELOG.md" > "$validation_dir/parent-changelog.md" || exit 1
-        git show "HEAD:public-repo/CHANGELOG.md" > "$validation_dir/head-changelog.md" || exit 1
-        awk -v version="$target" '
-            function is_version_heading(line, marker, suffix) {
-                marker = "## v" version
-                if (index(line, marker) != 1) return 0
-                suffix = substr(line, length(marker) + 1, 1)
-                return suffix == "" || suffix ~ /[[:space:]]/
-            }
-            function is_exact_heading(line, prefix, date) {
-                prefix = "## v" version " — "
-                if (index(line, prefix) != 1) return 0
-                date = substr(line, length(prefix) + 1)
-                return length(date) == 10 &&
-                    date ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/
-            }
-            /^## v/ && !first_release_seen {
-                first_release_seen = 1
-                if (is_exact_heading($0)) first_release_is_target = 1
-            }
-            is_version_heading($0) {
-                target_count++
-                if (is_exact_heading($0)) {
-                    exact_count++
-                    removing = 1
-                    next
+    awk -v version="$1" '
+        {
+            for (i = 0; i < 2; i++) {
+                prefix = (i == 0) ? "## v" version : "## [" version "]"
+                if (index($0, prefix) == 1) {
+                    suffix = substr($0, length(prefix) + 1, 1)
+                    if (suffix == "" || suffix ~ /[[:space:]]/) count++
                 }
             }
-            removing && /^##([[:space:]]|$)/ { removing = 0 }
-            !removing { print }
-            END {
-                if (target_count != 1 || exact_count != 1 || !first_release_is_target || removing) exit 2
-            }
-        ' "$validation_dir/head-changelog.md" > "$validation_dir/stripped-changelog.md" || exit 1
-        cmp -s "$validation_dir/stripped-changelog.md" "$validation_dir/parent-changelog.md" || exit 1
-        [[ "$(changelog_version_count_at_commit "$parent" "$target")" == "0" ]] || exit 1
-    )
-    status=$?
-    rm -rf -- "$validation_dir"
-    return "$status"
+        }
+        END { print count + 0 }
+    '
 }
 
-remote_tag_commit() {
-    local tag=$1 output peeled direct
-    output=$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")
-    peeled=$(printf '%s\n' "$output" | awk '$2 ~ /\^\{\}$/ {print $1; exit}')
-    direct=$(printf '%s\n' "$output" | awk '$2 !~ /\^\{\}$/ {print $1; exit}')
-    printf '%s\n' "${peeled:-$direct}"
-}
-
-verify_public_release() {
-    local tag=$1 version=$2 asset_names expected asset_dir
-    PHASE="verify public release"
-    gh release view "$tag" --repo "$PUBLIC_REPO" >/dev/null
-    [[ "$(gh release view "$tag" --repo "$PUBLIC_REPO" --json isDraft --jq '.isDraft')" == "false" ]] ||
-        die "public release $tag is still a draft"
-    asset_names=$(gh release view "$tag" --repo "$PUBLIC_REPO" --json assets --jq '.assets[].name')
+verify_release() {
+    local tag=$1 version=$2 repo=$3 asset_names expected asset_dir
+    PHASE="verify release"
+    gh release view "$tag" --repo "$repo" >/dev/null
+    [[ "$(gh release view "$tag" --repo "$repo" --json isDraft --jq '.isDraft')" == "false" ]] ||
+        die "release $tag is still a draft"
+    asset_names=$(gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name')
     for expected in \
         "LingoPop-$version-mac-universal.dmg" \
         "LingoPop-$version-mac-universal.zip" \
         "SHA256SUMS"; do
         printf '%s\n' "$asset_names" | grep -Fxq "$expected" ||
-            die "public release $tag is missing asset $expected"
+            die "release $tag is missing asset $expected"
     done
 
+    WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/lingopop-verify.XXXXXX")
     asset_dir="$WORK_DIR/assets"
     mkdir -p "$asset_dir"
-    gh release download "$tag" --repo "$PUBLIC_REPO" --dir "$asset_dir" \
+    gh release download "$tag" --repo "$repo" --dir "$asset_dir" \
         --pattern "LingoPop-$version-mac-universal.dmg" \
         --pattern "LingoPop-$version-mac-universal.zip" \
         --pattern "SHA256SUMS"
     (cd "$asset_dir" && shasum -a 256 -c SHA256SUMS)
 }
 
-[[ $# -gt 0 ]] || { usage >&2; exit 2; }
+require_gh() {
+    command -v gh >/dev/null 2>&1 || die "gh CLI is required"
+    gh auth status >/dev/null 2>&1 || die "gh CLI is not authenticated"
+}
 
-VERSION_ARG=""
-DRY_RUN=0
-SKIP_BUILD=0
-COMMIT_MESSAGE=""
-NOTES_FILE=""
-RELEASE_NOTES=()
+cmd_prepare() {
+    local version=$1 skip_build=$2
+    local tag="v$version" branch="release/v$version"
+    local current_version current_build target_build current_branch tmp
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        patch|minor|major)
-            [[ -z "$VERSION_ARG" ]] || die "specify exactly one version or bump kind"
-            VERSION_ARG=$1
-            shift
-            ;;
-        --dry-run)
-            DRY_RUN=1
-            shift
-            ;;
-        --skip-build)
-            SKIP_BUILD=1
-            shift
-            ;;
-        --message)
-            [[ $# -ge 2 && -n "$2" ]] || die "--message requires non-empty text"
-            COMMIT_MESSAGE=$2
-            shift 2
-            ;;
-        --note)
-            [[ $# -ge 2 && -n "$2" ]] || die "--note requires non-empty text"
-            [[ "$2" != *$'\n'* && "$2" != *$'\r'* ]] || die "--note must be a single line; use --notes-file for Markdown"
-            RELEASE_NOTES+=("$2")
-            shift 2
-            ;;
-        --notes-file)
-            [[ $# -ge 2 && -n "$2" ]] || die "--notes-file requires a path"
-            [[ -z "$NOTES_FILE" ]] || die "specify --notes-file only once"
-            NOTES_FILE=$2
-            shift 2
-            ;;
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        --*) die "unknown option: $1" ;;
-        *)
-            if is_semver "$1"; then
-                [[ -z "$VERSION_ARG" ]] || die "specify exactly one version or bump kind"
-                VERSION_ARG=$1
-                shift
-            else
-                die "invalid version '$1' (expected patch, minor, major, or X.Y.Z)"
-            fi
-            ;;
-    esac
-done
+    PHASE="local preflight"
+    current_version=$(read_project_value project.yml MARKETING_VERSION) ||
+        die "project.yml must contain exactly one MARKETING_VERSION"
+    current_build=$(read_project_value project.yml CURRENT_PROJECT_VERSION) ||
+        die "project.yml must contain exactly one CURRENT_PROJECT_VERSION"
+    is_semver "$current_version" || die "invalid MARKETING_VERSION in project.yml: $current_version"
+    [[ "$current_build" =~ ^(0|[1-9][0-9]*)$ ]] ||
+        die "CURRENT_PROJECT_VERSION must be a non-negative integer without leading zeroes"
+    version_gt "$version" "$current_version" ||
+        die "version $version must be greater than current $current_version"
+    target_build=$((current_build + 1))
 
-[[ -n "$VERSION_ARG" ]] || die "a version or bump kind is required"
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    export GIT_OPTIONAL_LOCKS=0
-fi
-cd "$PROJECT_DIR"
+    [[ "$(changelog_version_count "$version" < CHANGELOG.md)" == "1" ]] ||
+        die "CHANGELOG.md must contain exactly one '## v$version' section"
 
-PHASE="read project version"
-CURRENT_VERSION=$(read_project_value project.yml MARKETING_VERSION) ||
-    die "project.yml must contain exactly one MARKETING_VERSION"
-CURRENT_BUILD=$(read_project_value project.yml CURRENT_PROJECT_VERSION) ||
-    die "project.yml must contain exactly one CURRENT_PROJECT_VERSION"
-is_semver "$CURRENT_VERSION" || die "invalid MARKETING_VERSION in project.yml: $CURRENT_VERSION"
-[[ "$CURRENT_BUILD" =~ ^(0|[1-9][0-9]*)$ ]] ||
-    die "CURRENT_PROJECT_VERSION must be a non-negative integer without leading zeroes"
+    current_branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    [[ "$current_branch" == "main" ]] ||
+        die "prepare must run on main (current: ${current_branch:-detached HEAD})"
+    [[ -z "$(git status --porcelain)" ]] || die "worktree must be clean"
+    require_gh
 
-RESUME=0
-if [[ "$VERSION_ARG" == patch || "$VERSION_ARG" == minor || "$VERSION_ARG" == major ]]; then
-    TARGET_VERSION=$(bump_version "$CURRENT_VERSION" "$VERSION_ARG")
-else
-    TARGET_VERSION=$VERSION_ARG
-    if version_gt "$TARGET_VERSION" "$CURRENT_VERSION"; then
-        :
-    elif [[ "$TARGET_VERSION" == "$CURRENT_VERSION" ]] &&
-        is_valid_resume_commit "$TARGET_VERSION" "$CURRENT_BUILD"; then
-        RESUME=1
-    else
-        die "exact version must be higher than current $CURRENT_VERSION (equality is allowed only for a validated resume commit)"
-    fi
-fi
+    PHASE="fetch"
+    git fetch --prune origin main
+    [[ "$(git rev-parse HEAD)" == "$(git rev-parse refs/remotes/origin/main)" ]] ||
+        die "local main must equal origin/main"
+    ! git rev-parse -q --verify "refs/heads/$branch" >/dev/null || die "local branch $branch already exists"
+    [[ -z "$(git ls-remote --heads origin "$branch")" ]] || die "remote branch $branch already exists"
 
-if [[ "$RESUME" -eq 1 ]]; then
-    TARGET_BUILD=$CURRENT_BUILD
-else
-    TARGET_BUILD=$((CURRENT_BUILD + 1))
-fi
-TAG="v$TARGET_VERSION"
-[[ -n "$COMMIT_MESSAGE" ]] || COMMIT_MESSAGE="Release $TAG"
+    PHASE="create branch"
+    git switch -c "$branch"
+    ROLLBACK_BRANCH=$branch   # removed again by cleanup() if anything fails before the commit
 
-if [[ ${#RELEASE_NOTES[@]} -gt 0 && -n "$NOTES_FILE" ]]; then
-    die "--note and --notes-file are mutually exclusive"
-fi
-NOTES_BODY=""
-if [[ "$RESUME" -eq 0 ]]; then
-    if [[ -n "$NOTES_FILE" ]]; then
-        [[ -f "$NOTES_FILE" && -r "$NOTES_FILE" ]] || die "cannot read notes file: $NOTES_FILE"
-        NOTES_BODY=$(<"$NOTES_FILE")
-        [[ -n "${NOTES_BODY//[[:space:]]/}" ]] || die "notes file must not be empty"
-        if printf '%s\n' "$NOTES_BODY" | grep -Eq '^##([[:space:]]|$)'; then
-            die "notes file must contain a release body, not a level-2 changelog heading"
-        fi
-    elif [[ ${#RELEASE_NOTES[@]} -gt 0 ]]; then
-        for note in "${RELEASE_NOTES[@]}"; do
-            NOTES_BODY+="- $note"$'\n'
-        done
-        NOTES_BODY=${NOTES_BODY%$'\n'}
-    else
-        die "release notes are required: pass --note TEXT (repeatable) or --notes-file PATH"
-    fi
-elif [[ ${#RELEASE_NOTES[@]} -gt 0 || -n "$NOTES_FILE" ]]; then
-    die "release notes must not be supplied when resuming an already committed version"
-fi
-
-BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
-ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
-PRIVATE_REPO=$(origin_repo_slug "$ORIGIN_URL" 2>/dev/null || true)
-DIRTY=$(git status --porcelain)
-
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY RUN — no files, refs, remotes, builds, or network calls will be changed."
-    echo "Current version/build: $CURRENT_VERSION ($CURRENT_BUILD)"
-    echo "Target version/build:  $TARGET_VERSION ($TARGET_BUILD)"
-    echo "Commit message:        $COMMIT_MESSAGE"
-    echo "Changelog heading:     ## v$TARGET_VERSION — $(date +%Y-%m-%d)"
-    if [[ -n "$NOTES_FILE" ]]; then
-        echo "Release notes:         $NOTES_FILE"
-    else
-        echo "Release notes:         ${#RELEASE_NOTES[@]} --note value(s)"
-    fi
-    echo "Public repository:     $PUBLIC_REPO"
-    [[ "$SKIP_BUILD" -eq 0 ]] || echo "WARNING: --skip-build would bypass local build verification."
-    blockers=0
-    if [[ -n "$DIRTY" ]]; then
-        echo "BLOCKER for real run: worktree is dirty (dry-run continues)." >&2
-        blockers=1
-    fi
-    if [[ "$BRANCH" != "main" ]]; then
-        echo "BLOCKER for real run: branch is '${BRANCH:-detached}', expected main." >&2
-        blockers=1
-    fi
-    if [[ -z "$ORIGIN_URL" || "$UPSTREAM" != "origin/main" ]]; then
-        echo "BLOCKER for real run: origin/upstream is missing or upstream is not origin/main." >&2
-        blockers=1
-    fi
-    echo "Planned phases: preflight/fetch → update version and changelog → build → release commit → push private main → sync public docs → push annotated tag → wait for exact CI run → verify public assets and checksums"
-    if [[ "$blockers" -eq 1 ]]; then
-        echo "Dry-run completed with blockers; no changes were made."
-    else
-        echo "Dry-run completed; remote-only checks are deferred to the real run."
-    fi
-    exit 0
-fi
-
-PHASE="local preflight"
-[[ -z "$DIRTY" ]] || die "worktree must be clean"
-[[ "$BRANCH" == "main" ]] || die "release must run on main (current: ${BRANCH:-detached HEAD})"
-[[ -n "$ORIGIN_URL" ]] || die "origin remote is missing"
-[[ "$UPSTREAM" == "origin/main" ]] || die "main must track origin/main (current: ${UPSTREAM:-none})"
-[[ -n "$PRIVATE_REPO" ]] || die "origin must be a GitHub repository URL"
-command -v gh >/dev/null 2>&1 || die "gh CLI is required"
-command -v rsync >/dev/null 2>&1 || die "rsync is required"
-gh auth status >/dev/null || die "gh CLI is not authenticated"
-
-WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/lingopop-publish.XXXXXX")
-
-PHASE="fetch private state"
-echo "→ Fetching origin/main and tags..."
-git fetch --prune origin main --tags
-
-HEAD_COMMIT=$(git rev-parse HEAD)
-REMOTE_MAIN=$(git rev-parse refs/remotes/origin/main)
-if [[ "$RESUME" -eq 1 ]]; then
-    PARENT_COMMIT=$(git rev-parse HEAD^)
-    if [[ "$REMOTE_MAIN" != "$HEAD_COMMIT" && "$REMOTE_MAIN" != "$PARENT_COMMIT" ]]; then
-        die "resume requires origin/main to equal the release commit or its direct parent"
-    fi
-    RELEASE_COMMIT=$HEAD_COMMIT
-    TARGET_BUILD=$CURRENT_BUILD
-    echo "→ Validated resume at $TAG ($RELEASE_COMMIT)."
-else
-    [[ "$HEAD_COMMIT" == "$REMOTE_MAIN" ]] ||
-        die "local main must equal origin/main before starting a release"
-fi
-
-LOCAL_TAG_COMMIT=""
-if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-    LOCAL_TAG_COMMIT=$(git rev-list -n 1 "$TAG")
-fi
-REMOTE_TAG_COMMIT=$(remote_tag_commit "$TAG")
-PUBLIC_RELEASE_EXISTS=0
-PUBLIC_RELEASE_ERROR="$WORK_DIR/public-release-error"
-if gh api "repos/$PUBLIC_REPO/releases/tags/$TAG" --silent 2>"$PUBLIC_RELEASE_ERROR"; then
-    PUBLIC_RELEASE_EXISTS=1
-elif grep -q "HTTP 404" "$PUBLIC_RELEASE_ERROR"; then
-    PUBLIC_RELEASE_EXISTS=0
-else
-    sed -n '1,5p' "$PUBLIC_RELEASE_ERROR" >&2
-    die "could not determine whether public release $TAG exists"
-fi
-
-if [[ "$RESUME" -eq 0 ]]; then
-    [[ -z "$LOCAL_TAG_COMMIT" ]] || die "local tag $TAG already exists"
-    [[ -z "$REMOTE_TAG_COMMIT" ]] || die "remote tag $TAG already exists"
-    [[ "$PUBLIC_RELEASE_EXISTS" -eq 0 ]] || die "public release $TAG already exists"
-
-    PHASE="update release files"
-    PROJECT_BACKUP="$WORK_DIR/project.yml.original"
-    CHANGELOG_BACKUP="$WORK_DIR/CHANGELOG.md.original"
-    cp project.yml "$PROJECT_BACKUP"
-    cp public-repo/CHANGELOG.md "$CHANGELOG_BACKUP"
-    UPDATE_FILE="$WORK_DIR/project.yml.updated"
-    awk -v version="$TARGET_VERSION" -v build="$TARGET_BUILD" '
+    PHASE="bump version"
+    tmp=$(mktemp "${TMPDIR:-/tmp}/lingopop-project.XXXXXX")
+    awk -v version="$version" -v build="$target_build" '
         $1 == "MARKETING_VERSION:" { sub(/"[^"]*"/, "\"" version "\""); marketing++; print; next }
         $1 == "CURRENT_PROJECT_VERSION:" { sub(/"[^"]*"/, "\"" build "\""); current++; print; next }
         { print }
         END { if (marketing != 1 || current != 1) exit 2 }
-    ' project.yml > "$UPDATE_FILE" || die "could not safely update the two version keys"
-    mv "$UPDATE_FILE" project.yml
-
-    [[ "$(changelog_version_count public-repo/CHANGELOG.md "$TARGET_VERSION")" == "0" ]] ||
-        die "public-repo/CHANGELOG.md already contains a section for $TAG"
-    CHANGELOG_UPDATE="$WORK_DIR/CHANGELOG.md.updated"
-    NOTES_TEMP="$WORK_DIR/release-notes.md"
-    printf '%s\n' "$NOTES_BODY" > "$NOTES_TEMP"
-    RELEASE_DATE=$(date +%Y-%m-%d)
-    awk -v heading="## v$TARGET_VERSION — $RELEASE_DATE" -v notes_file="$NOTES_TEMP" '
-        !inserted && /^##([[:space:]]|$)/ {
-            print heading
-            print ""
-            while ((getline line < notes_file) > 0) print line
-            close(notes_file)
-            print ""
-            inserted = 1
-        }
-        { print }
-        END { if (!inserted) exit 2 }
-    ' public-repo/CHANGELOG.md > "$CHANGELOG_UPDATE" ||
-        die "could not find the first release heading in public-repo/CHANGELOG.md"
-    mv "$CHANGELOG_UPDATE" public-repo/CHANGELOG.md
-
-    [[ "$(read_project_value project.yml MARKETING_VERSION)" == "$TARGET_VERSION" ]] ||
-        die "MARKETING_VERSION verification failed"
-    [[ "$(read_project_value project.yml CURRENT_PROJECT_VERSION)" == "$TARGET_BUILD" ]] ||
-        die "CURRENT_PROJECT_VERSION verification failed"
-    [[ "$(changelog_version_count public-repo/CHANGELOG.md "$TARGET_VERSION")" == "1" ]] ||
-        die "changelog insertion verification failed"
-    [[ "$(git diff --name-only)" == $'project.yml\npublic-repo/CHANGELOG.md' ]] ||
-        die "release update changed files outside project.yml and public-repo/CHANGELOG.md"
+    ' project.yml > "$tmp" || die "could not safely update the two version keys"
+    cat "$tmp" > project.yml
+    rm -f "$tmp"
     [[ "$(git diff --numstat -- project.yml | awk '{print $1 ":" $2}')" == "2:2" ]] ||
         die "expected exactly two replaced lines in project.yml"
 
-    if [[ "$SKIP_BUILD" -eq 1 ]]; then
-        echo "WARNING: --skip-build is active; this release commit is not locally build-verified."
+    if [[ "$skip_build" -eq 1 ]]; then
+        echo "WARNING: --skip-build is active; the version bump is not locally build-verified."
     else
         PHASE="local build"
-        echo "→ Building target version $TARGET_VERSION..."
+        echo "→ Building $version..."
         ./build.sh
     fi
 
-    PHASE="commit release version"
-    git add -- project.yml public-repo/CHANGELOG.md
-    [[ "$(git diff --cached --name-only)" == $'project.yml\npublic-repo/CHANGELOG.md' ]] ||
-        die "staged allowlist violation: only project.yml and public-repo/CHANGELOG.md may be committed"
-    git commit -m "$COMMIT_MESSAGE"
-    RELEASE_COMMIT=$(git rev-parse HEAD)
-    RELEASE_COMMITTED=1
-    PROJECT_BACKUP=""
-    CHANGELOG_BACKUP=""
-fi
+    PHASE="commit"
+    git add -- project.yml
+    git commit -m "Release $tag"
+    ROLLBACK_BRANCH=""
+    PHASE="push branch"
+    git push -u origin "$branch"
 
-if [[ -n "$LOCAL_TAG_COMMIT" && "$LOCAL_TAG_COMMIT" != "$RELEASE_COMMIT" ]]; then
-    die "local tag $TAG points to $LOCAL_TAG_COMMIT, expected $RELEASE_COMMIT"
-fi
-if [[ -n "$REMOTE_TAG_COMMIT" && "$REMOTE_TAG_COMMIT" != "$RELEASE_COMMIT" ]]; then
-    die "remote tag $TAG points to $REMOTE_TAG_COMMIT, expected $RELEASE_COMMIT"
-fi
-if [[ "$PUBLIC_RELEASE_EXISTS" -eq 1 && -z "$REMOTE_TAG_COMMIT" ]]; then
-    die "public release $TAG exists without the expected private remote tag; refusing ambiguous resume"
-fi
+    PHASE="open pull request"
+    gh pr create --fill --base main --head "$branch"
+    echo "✓ Merge the PR, then run: ./scripts/publish-release.sh tag $version"
+}
 
-PHASE="push private main"
-REMOTE_MAIN=$(git rev-parse refs/remotes/origin/main)
-if [[ "$REMOTE_MAIN" != "$RELEASE_COMMIT" ]]; then
-    echo "→ Pushing private main..."
-    git push origin main
-else
-    echo "✓ Private main already contains $RELEASE_COMMIT."
-fi
+cmd_tag() {
+    local version=$1 tag="v$1"
+    local main_version commit repo run_id run_url attempt=0
 
-PHASE="sync public documentation"
-echo "→ Synchronizing public documentation..."
-"$PROJECT_DIR/scripts/sync-public-repo.sh" "Sync public docs for $TAG"
+    require_gh
 
-PHASE="create private tag"
-if [[ -z "$LOCAL_TAG_COMMIT" ]]; then
-    git tag -a "$TAG" "$RELEASE_COMMIT" -m "Release $TAG"
-    LOCAL_TAG_COMMIT=$RELEASE_COMMIT
-else
-    echo "✓ Local tag $TAG already points to the release commit."
-fi
+    PHASE="fetch"
+    git fetch --prune origin main --tags
 
-PHASE="push private tag"
-REMOTE_TAG_COMMIT=$(remote_tag_commit "$TAG")
-if [[ -z "$REMOTE_TAG_COMMIT" ]]; then
-    echo "→ Pushing $TAG to trigger the release workflow..."
-    git push origin "refs/tags/$TAG"
-elif [[ "$REMOTE_TAG_COMMIT" == "$RELEASE_COMMIT" ]]; then
-    echo "✓ Remote tag $TAG already points to the release commit."
-else
-    die "remote tag $TAG points to $REMOTE_TAG_COMMIT, expected $RELEASE_COMMIT"
-fi
+    PHASE="preflight"
+    ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || die "local tag $tag already exists"
+    [[ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ]] || die "remote tag $tag already exists"
+    main_version=$(git show origin/main:project.yml | project_value MARKETING_VERSION) ||
+        die "origin/main:project.yml must contain exactly one MARKETING_VERSION"
+    [[ "$main_version" == "$version" ]] ||
+        die "origin/main has MARKETING_VERSION $main_version, expected $version (is the release PR merged?)"
 
-PHASE="locate release workflow"
-echo "→ Waiting for the exact Release workflow for $TAG..."
-RUN_ROW=""
-attempt=0
-while [[ -z "$RUN_ROW" && "$attempt" -lt 30 ]]; do
-    RUN_ROW=$(gh run list --repo "$PRIVATE_REPO" --workflow release.yml --event push \
-        --commit "$RELEASE_COMMIT" --limit 20 \
-        --json databaseId,headBranch,headSha,event,status,conclusion,url \
-        --jq ".[] | select(.headBranch == \"$TAG\" and .headSha == \"$RELEASE_COMMIT\" and .event == \"push\") | [.databaseId,.status,.conclusion,.url] | @tsv" | sed -n '1p')
-    [[ -n "$RUN_ROW" ]] || { sleep 2; attempt=$((attempt + 1)); }
+    commit=$(git rev-parse refs/remotes/origin/main)
+    repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+    PHASE="push tag"
+    git tag -a "$tag" "$commit" -m "Release $tag"
+    echo "→ Pushing $tag ($commit)..."
+    git push origin "refs/tags/$tag"
+
+    PHASE="locate release workflow"
+    run_id=""
+    while [[ -z "$run_id" && "$attempt" -lt 30 ]]; do
+        run_id=$(gh run list --repo "$repo" --workflow Release --event push --branch "$tag" \
+            --limit 5 --json databaseId,headSha \
+            --jq ".[] | select(.headSha == \"$commit\") | .databaseId" | sed -n '1p')
+        [[ -n "$run_id" ]] || { sleep 2; attempt=$((attempt + 1)); }
+    done
+    [[ -n "$run_id" ]] || die "could not find the Release workflow run for $tag"
+    run_url=$(gh run view "$run_id" --repo "$repo" --json url --jq '.url')
+    echo "→ Workflow: $run_url"
+
+    PHASE="wait for release workflow"
+    gh run watch "$run_id" --repo "$repo" --exit-status
+
+    verify_release "$tag" "$version" "$repo"
+
+    echo "✓ Release $tag completed successfully."
+    echo "  Commit:   $commit"
+    echo "  Workflow: $run_url"
+    echo "  Release:  https://github.com/$repo/releases/tag/$tag"
+}
+
+[[ $# -gt 0 ]] || { usage >&2; exit 2; }
+
+SUBCOMMAND=$1
+shift
+case "$SUBCOMMAND" in
+    -h|--help) usage; exit 0 ;;
+    prepare|tag) ;;
+    *) usage >&2; exit 2 ;;
+esac
+
+VERSION=""
+SKIP_BUILD=0
+for arg in "$@"; do
+    case "$arg" in
+        --skip-build)
+            [[ "$SUBCOMMAND" == prepare ]] || { usage >&2; exit 2; }
+            SKIP_BUILD=1
+            ;;
+        -h|--help) usage; exit 0 ;;
+        --*) usage >&2; exit 2 ;;
+        *)
+            [[ -z "$VERSION" ]] || { usage >&2; exit 2; }
+            VERSION=$arg
+            ;;
+    esac
 done
-[[ -n "$RUN_ROW" ]] || die "could not find the exact tag-triggered workflow run for $TAG"
-IFS=$'\t' read -r RUN_ID RUN_STATUS RUN_CONCLUSION RUN_URL <<< "$RUN_ROW"
-echo "→ Workflow: $RUN_URL"
+[[ -n "$VERSION" ]] || { usage >&2; exit 2; }
+is_semver "$VERSION" || die "invalid version '$VERSION' (expected X.Y.Z)"
 
-PHASE="wait for release workflow"
-if [[ "$RUN_STATUS" != "completed" ]]; then
-    gh run watch "$RUN_ID" --repo "$PRIVATE_REPO" --exit-status
+cd "$PROJECT_DIR"
+if [[ "$SUBCOMMAND" == prepare ]]; then
+    cmd_prepare "$VERSION" "$SKIP_BUILD"
+else
+    cmd_tag "$VERSION"
 fi
-RUN_CONCLUSION=$(gh run view "$RUN_ID" --repo "$PRIVATE_REPO" --json conclusion --jq '.conclusion')
-[[ "$RUN_CONCLUSION" == "success" ]] || die "workflow $RUN_URL concluded with '$RUN_CONCLUSION'"
-
-verify_public_release "$TAG" "$TARGET_VERSION"
-
-echo "✓ Release $TAG completed successfully."
-echo "  Private commit: $RELEASE_COMMIT"
-echo "  Workflow:       $RUN_URL"
-echo "  Public release: https://github.com/$PUBLIC_REPO/releases/tag/$TAG"
