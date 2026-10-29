@@ -17,6 +17,8 @@ permissions:
 jobs:
   build:
     runs-on: macos-15   # Apple Silicon — xcodebuild cross-compiles to x86_64 for universal
+    permissions:
+      contents: write   # needed only to create the GitHub release in this repository
 
     steps:
       - name: Require default branch for manual runs
@@ -94,13 +96,13 @@ jobs:
         id: notes
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          PUBLIC_REPO: ${{ vars.PUBLIC_REPO }}
+          REPO: ${{ github.repository }}
         run: |
           extract_section() {
             awk -v h="$1" '
               /^## / { if (found) exit; if ($2 == h) { found = 1; next } }
               found { print }
-            ' public-repo/CHANGELOG.md
+            ' CHANGELOG.md
           }
           SECTION=$(extract_section "v${VERSION}")
           if [[ -z "$SECTION" ]]; then
@@ -112,7 +114,7 @@ jobs:
             if [[ -n "$SECTION" ]]; then
               printf '%s\n' "$SECTION"
             else
-              echo "See the [changelog](https://github.com/${PUBLIC_REPO}/blob/main/CHANGELOG.md) for details."
+              echo "See the [changelog](https://github.com/${REPO}/blob/main/CHANGELOG.md) for details."
             fi
             echo ""
             echo ""
@@ -122,33 +124,21 @@ jobs:
             echo "2. Open the dmg and drag LingoPop to Applications."
             echo "3. First launch: right-click LingoPop.app → **Open** (the app is ad-hoc signed, Gatekeeper will warn once)."
             echo "4. Grant Accessibility access when prompted (Settings → Privacy & Security → Accessibility)."
-            echo ""
-            echo "Need Intel- or arm64-only builds? They are attached separately."
           } > release_notes.md
           cat release_notes.md
 
       - name: Generate SHA256 checksums
         run: |
           cd dist
-          shasum -a 256 *.dmg *.zip 2>/dev/null | tee SHA256SUMS
+          shasum -a 256 -- *.dmg *.zip 2>/dev/null | tee SHA256SUMS
 
-      - name: Publish release in public repo
+      - name: Publish release
         env:
-          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
-          PUBLIC_REPO: ${{ vars.PUBLIC_REPO }}
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [[ -z "$PUBLIC_REPO" ]]; then
-            echo "::error::Repository variable PUBLIC_REPO is not set (e.g. owner/repo)."
-            exit 1
-          fi
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "::error::Secret PUBLIC_REPO_TOKEN is not set."
-            exit 1
-          fi
-
           gh release create "v${VERSION}" \
-            --repo "$PUBLIC_REPO" \
+            --repo "${{ github.repository }}" \
             --title "LingoPop v${VERSION}" \
             --notes-file release_notes.md \
             "dist/LingoPop-${VERSION}-mac-universal.dmg" \
