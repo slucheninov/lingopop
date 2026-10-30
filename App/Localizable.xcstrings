@@ -4539,31 +4539,31 @@
         }
       }
     },
-    "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage and history can sync between Macs via iCloud Drive." : {
+    "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage statistics, and optionally translation history, can sync between Macs via iCloud Drive." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage and history can sync between Macs via iCloud Drive."
+            "value" : "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage statistics, and optionally translation history, can sync between Macs via iCloud Drive."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Obsługuje Claude, OpenAI, Gemini, Grok, Google Translate, DeepL i Microsoft Translator. Klucze API i ustawienia dostawców są przechowywane lokalnie w zaszyfrowanym pliku. Użycie i historia mogą synchronizować się między komputerami Mac przez iCloud Drive."
+            "value" : "Obsługuje Claude, OpenAI, Gemini, Grok, Google Translate, DeepL i Microsoft Translator. Klucze API i ustawienia dostawców są przechowywane lokalnie w zaszyfrowanym pliku. Statystyki użycia oraz opcjonalnie historia tłumaczeń mogą synchronizować się między komputerami Mac przez iCloud Drive."
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Підтримує Claude, OpenAI, Gemini, Grok, Google Translate, DeepL і Microsoft Translator. Ключі API та налаштування провайдерів зберігаються локально в зашифрованому файлі. Використання та історія можуть синхронізуватися між Mac через iCloud Drive."
+            "value" : "Підтримує Claude, OpenAI, Gemini, Grok, Google Translate, DeepL і Microsoft Translator. Ключі API та налаштування провайдерів зберігаються локально в зашифрованому файлі. Статистика використання та, за бажанням, історія перекладів можуть синхронізуватися між Mac через iCloud Drive."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unterstützt Claude, OpenAI, Gemini, Grok, Google Translate, DeepL und Microsoft Translator. API-Schlüssel und Anbietereinstellungen werden lokal in einer verschlüsselten Datei gespeichert. Nutzung und Verlauf können über iCloud Drive zwischen Macs synchronisiert werden."
+            "value" : "Unterstützt Claude, OpenAI, Gemini, Grok, Google Translate, DeepL und Microsoft Translator. API-Schlüssel und Anbietereinstellungen werden lokal in einer verschlüsselten Datei gespeichert. Nutzungsstatistiken und optional der Übersetzungsverlauf können über iCloud Drive zwischen Macs synchronisiert werden."
           }
         }
       }
@@ -4597,31 +4597,31 @@
         }
       }
     },
-    "Sync usage and history via iCloud Drive" : {
+    "Sync usage statistics via iCloud Drive" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sync usage and history via iCloud Drive"
+            "value" : "Sync usage statistics via iCloud Drive"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronizuj użycie i historię przez iCloud Drive"
+            "value" : "Synchronizuj statystyki użycia przez iCloud Drive"
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Синхронізувати використання та історію через iCloud Drive"
+            "value" : "Синхронізувати статистику використання через iCloud Drive"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nutzung und Verlauf über iCloud Drive synchronisieren"
+            "value" : "Nutzungsstatistik über iCloud Drive synchronisieren"
           }
         }
       }

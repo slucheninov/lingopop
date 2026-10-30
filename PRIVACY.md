@@ -5,7 +5,7 @@ LingoPop is a macOS menu-bar app. This document describes what data the app hand
 ## Data the app stores locally
 
 - **API keys and provider settings** (base URL, model, referer, region) for AI providers (Claude, OpenAI, Gemini, Grok, Google Translate) are normally stored in `~/Library/Application Support/LingoPop/secrets.dat`. If that file cannot be read, or a write of provider settings to it fails, the affected provider settings (not API keys) and any edits you make afterwards are kept in the local `UserDefaults` (unencrypted, never synced to iCloud) until a write to `secrets.dat` succeeds, and are then removed from `UserDefaults`. The file is encrypted with AES-GCM using a symmetric key derived (HKDF) from your machine's hardware UUID (`IOPlatformUUID`) plus a random salt generated per install and stored next to the file. This protects the keys at rest and ties the file to your Mac, but it is obfuscation rather than a security boundary: other processes running as your user could in principle derive the same key. File permissions are 0600 (owner read/write only). DeepL and Microsoft Translator keys are stored the same way.
-- **Settings** (preferred provider, target language, hotkeys, history size limit, etc.) are stored only locally in `UserDefaults` and are never synced to iCloud. **Translation history** (last N entries) is stored in `UserDefaults` plus, if iCloud Drive sync is enabled in Settings → Main, in `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/history.json`. The history includes the original text, the translated text, and metadata (timestamp, provider, target language).
+- **Settings** (preferred provider, target language, hotkeys, history size limit, etc.) are stored only locally in `UserDefaults` and are never synced to iCloud. **Translation history** (last N entries) is stored in `UserDefaults` plus, only if you enable both **Sync usage statistics via iCloud Drive** and **Sync translation history to iCloud** in Settings → Main (history sync is off by default), in `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/history.json`. The history includes the original text, the translated text, and metadata (timestamp, provider, target language).
 
 ## Data sent to third parties
 
@@ -30,14 +30,14 @@ LingoPop does **not** send any data to the maintainer or to any server other tha
 
 ## What's synced via iCloud Drive
 
-If iCloud Drive sync is enabled (it's on by default when iCloud Drive is available on your Mac), the app writes plain JSON files to your iCloud Drive folder. These files contain:
+If **Sync usage statistics via iCloud Drive** is enabled (it's on by default when iCloud Drive is available on your Mac), the app writes plain JSON files to your iCloud Drive folder. These files contain:
 
-- Translation history entries (only if you also enable history sync)
-- Usage statistics (token counts and estimated cost per provider/day — never any text), in `usage.json`
+- Usage statistics (token counts and estimated cost per provider/day — never any text), in `usage.json`. This is all the master iCloud toggle syncs on its own.
+- Translation history entries, in `history.json`, **only** if you also enable the separate **Sync translation history to iCloud** option (off by default, because history contains your texts).
 
 These files sync between Macs signed into the same Apple ID, just like any other iCloud Drive file. They do **not** include settings, provider settings or API keys — those stay local on each Mac. Older versions also wrote a `settings.json` to this folder; current versions no longer read or change it, and you can delete it manually.
 
-You can disable iCloud sync in Settings → Main.
+You can disable iCloud sync, or only the history part of it, in Settings → Main.
 
 ## Clipboard data
 
@@ -53,9 +53,9 @@ When you trigger an operation, LingoPop temporarily reads the system clipboard t
 If translation history is enabled, the source text and result are saved to:
 
 - `UserDefaults` for the app (`~/Library/Preferences/com.lingopop.app.plist`) — local, always
-- `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/history.json` (only if iCloud sync is on in Settings → Main)
+- `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/history.json` (only if both the iCloud sync toggle and the separate history sync option are on in Settings → Main)
 
-You can limit or clear history in Settings → Main, and disable iCloud sync at any time.
+You can limit or clear history in Settings → Main, and disable iCloud sync (or just history sync) at any time.
 
 ### Privacy summary for clipboard data
 

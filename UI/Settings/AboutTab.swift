@@ -65,7 +65,7 @@ struct AboutTab: View {
             Text("Select text anywhere on your Mac, press a shortcut, and get an instant AI translation, grammar fix, or rewrite in a popup near your cursor.")
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Text("Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage and history can sync between Macs via iCloud Drive.")
+            Text("Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage statistics, and optionally translation history, can sync between Macs via iCloud Drive.")
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

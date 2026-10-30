@@ -73,7 +73,7 @@ struct MainSettingsTab: View {
                         .font(.system(size: 12))
                     Spacer()
                 }
-                Toggle("Sync usage and history via iCloud Drive", isOn: $store.iCloudSync)
+                Toggle("Sync usage statistics via iCloud Drive", isOn: $store.iCloudSync)
                     .disabled(!CloudStorage.isAvailable)
                 Toggle("Sync translation history to iCloud", isOn: $store.syncHistoryToiCloud)
                     .disabled(!store.iCloudSync)
