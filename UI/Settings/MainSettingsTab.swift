@@ -9,8 +9,15 @@ struct MainSettingsTab: View {
 
     @State private var selectedAppLanguage = AppLanguage.stored()
 
-    /// True when the saved choice differs from the language this launch was started with.
-    private var appLanguageChanged: Bool { selectedAppLanguage != AppLanguage.launched }
+    /// True when the language the saved choice would produce differs from the one the
+    /// running UI was loaded with (also covers a `-AppleLanguages` launch argument).
+    private var appLanguageChanged: Bool {
+        AppLanguage.needsRelaunch(
+            choice: selectedAppLanguage,
+            launchedEffective: AppLanguage.launchedEffective,
+            systemPreferences: AppLanguage.systemPreferences()
+        )
+    }
 
     private var appLanguageBinding: Binding<AppLanguage> {
         Binding(
