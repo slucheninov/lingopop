@@ -4,8 +4,8 @@ LingoPop is a macOS menu-bar app. This document describes what data the app hand
 
 ## Data the app stores locally
 
-- **API keys** for AI providers (Claude, OpenAI, Gemini, Grok, Google Translate) are stored in `~/Library/Application Support/LingoPop/secrets.dat`. The file is encrypted with AES-GCM using a symmetric key derived (HKDF) from your machine's hardware UUID (`IOPlatformUUID`) plus a random salt generated per install and stored next to the file. This protects the keys at rest and ties the file to your Mac, but it is obfuscation rather than a security boundary: other processes running as your user could in principle derive the same key. File permissions are 0600 (owner read/write only). DeepL and Microsoft Translator keys are stored the same way.
-- **Settings** (preferred provider, target language, hotkeys, history size limit, etc.) and **translation history** (last N entries) are stored in `UserDefaults` (not in Application Support) plus, if iCloud Drive sync is enabled in Settings → Main, in `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/settings.json` and `history.json`. The history includes the original text, the translated text, and metadata (timestamp, provider, target language).
+- **API keys and provider settings** (base URL, model, referer, region) for AI providers (Claude, OpenAI, Gemini, Grok, Google Translate) are stored in `~/Library/Application Support/LingoPop/secrets.dat`. The file is encrypted with AES-GCM using a symmetric key derived (HKDF) from your machine's hardware UUID (`IOPlatformUUID`) plus a random salt generated per install and stored next to the file. This protects the keys at rest and ties the file to your Mac, but it is obfuscation rather than a security boundary: other processes running as your user could in principle derive the same key. File permissions are 0600 (owner read/write only). DeepL and Microsoft Translator keys are stored the same way.
+- **Settings** (preferred provider, target language, hotkeys, history size limit, etc.) are stored only locally in `UserDefaults` and are never synced to iCloud. **Translation history** (last N entries) is stored in `UserDefaults` plus, if iCloud Drive sync is enabled in Settings → Main, in `~/Library/Mobile Documents/com~apple~CloudDocs/LingoPop/history.json`. The history includes the original text, the translated text, and metadata (timestamp, provider, target language).
 
 ## Data sent to third parties
 
@@ -32,11 +32,10 @@ LingoPop does **not** send any data to the maintainer or to any server other tha
 
 If iCloud Drive sync is enabled (it's on by default when iCloud Drive is available on your Mac), the app writes plain JSON files to your iCloud Drive folder. These files contain:
 
-- Settings (provider preference, hotkeys, language pairs, etc.)
-- Translation history entries
+- Translation history entries (only if you also enable history sync)
 - Usage statistics (token counts and estimated cost per provider/day — never any text), in `usage.json`
 
-These files sync between Macs signed into the same Apple ID, just like any other iCloud Drive file. They do **not** include API keys — keys stay local on each Mac.
+These files sync between Macs signed into the same Apple ID, just like any other iCloud Drive file. They do **not** include settings, provider settings or API keys — those stay local on each Mac. Older versions also wrote a `settings.json` to this folder; current versions no longer read or change it, and you can delete it manually.
 
 You can disable iCloud sync in Settings → Main.
 

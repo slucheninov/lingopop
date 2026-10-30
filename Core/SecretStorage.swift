@@ -42,6 +42,9 @@ enum SecretStorage {
     // True when machineIdentifier() had to generate a brand-new machine.key
     // (IOPlatformUUID unavailable); an existing secrets.dat can't match it.
     nonisolated(unsafe) private static var machineKeyWasFreshlyGenerated = false
+    // Decrypted entries, kept after the first successful read/write so API keys and provider settings
+    // are not re-decrypted on every access. Only set from a successful decrypt or write (guarded by `lock`).
+    nonisolated(unsafe) private static var cachedEntries: [String: String]?
 
     // H-1: HKDF-derived key using a persisted random salt (secrets.salt).
     private static func symmetricKey() throws -> SymmetricKey {
@@ -179,12 +182,48 @@ enum SecretStorage {
         return ok
     }
 
+    /// Provider settings (base URL, model, referer, region) stored next to the API keys in `secrets.dat`.
+    /// `.unavailable` means the file could not be read / decrypted; callers must then leave old data untouched.
+    static func loadProviderSettings() -> SecureProviderSettings {
+        guard case .available(let store) = loadAll() else { return .unavailable }
+        return SecretsPayload.providerSettings(in: store)
+    }
+
+    /// Replaces the provider-settings entry; API keys and any unknown entries are preserved.
+    @discardableResult
+    static func saveProviderSettings(_ settings: [ProviderType: ProviderConnectionSettings]) -> Bool {
+        guard case .available(var store) = loadAll() else {
+            log.error("Secrets store unavailable; refusing to overwrite secrets.dat")
+            return false
+        }
+        do {
+            try SecretsPayload.setProviderSettings(settings, in: &store)
+        } catch {
+            log.error("Failed to encode provider settings: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+        return saveAll(store)
+    }
+
     private enum LoadResult {
         case available([String: String])
         case unavailable
     }
 
+    private static func cachedStore() -> [String: String]? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cachedEntries
+    }
+
+    private static func setCachedStore(_ store: [String: String]?) {
+        lock.lock()
+        cachedEntries = store
+        lock.unlock()
+    }
+
     private static func loadAll() -> LoadResult {
+        if let cached = cachedStore() { return .available(cached) }
         let url = fileURL
         guard FileManager.default.fileExists(atPath: url.path) else {
             return .available([:])
@@ -209,6 +248,7 @@ enum SecretStorage {
             return .unavailable
         }
         if let store = decrypt(data, using: key) {
+            setCachedStore(store)
             return .available(store)
         }
         // Legacy migration: files written before the HKDF/salt scheme.
@@ -236,7 +276,7 @@ enum SecretStorage {
         do {
             let box = try AES.GCM.SealedBox(combined: data)
             let plaintext = try AES.GCM.open(box, using: key)
-            return try JSONDecoder().decode([String: String].self, from: plaintext)
+            return SecretsPayload.decode(plaintext)
         } catch {
             return nil
         }
@@ -260,10 +300,11 @@ enum SecretStorage {
 
     private static func saveAll(_ store: [String: String]) -> Bool {
         do {
-            let plaintext = try JSONEncoder().encode(store)
+            let plaintext = try SecretsPayload.encode(store)
             let sealed = try AES.GCM.seal(plaintext, using: try symmetricKey())
             guard let combined = sealed.combined else { return false }
             try writeAtomically(combined, to: fileURL)
+            setCachedStore(store)
             return true
         } catch {
             log.error("Encrypt failed: \(error.localizedDescription, privacy: .public)")

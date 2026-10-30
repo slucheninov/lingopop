@@ -63,7 +63,7 @@
 - 🤖 Eight providers: **Claude**, **OpenAI**, **Gemini**, **Grok** (all operations + vision), **Google (Free)**, **Google Translate**, **DeepL**, and **Microsoft Translator** (translate only)
 - 🔁 Per-provider fallback — on 429, 5xx, or network errors, retries once with the fallback you pick for that provider
 - 📜 Translation history (0–100 entries, default 10). The three most recent results appear at the top of the menu-bar dropdown for one-click copy
-- ☁️ Settings and history sync via iCloud Drive when available (on by default). API keys stay on each Mac, encrypted with AES-GCM
+- ☁️ Usage statistics and (optionally) translation history sync via iCloud Drive when available. Settings, provider settings and API keys stay on each Mac, encrypted with AES-GCM
 - 🌍 Interface in English, Polish, Ukrainian and German (follows the system language; English is the fallback)
 
 ## Install
@@ -99,7 +99,7 @@ After first launch, click the LingoPop icon in the menu bar → **Settings…** 
 - **Target language** — choose a fixed target, or turn on **Auto-detect input language** and edit **language pairs** (source → target). Unmatched sources use the default target
 - **Limits** — **Max input characters** (default 5000), **History size** (storage + History window, 0–100, default 10), and **Display** (status-menu rows, 0–100, default 10)
 - **Startup** — **Launch at login**
-- **iCloud Drive sync** — sync settings and history between Macs on the same Apple ID (enabled when iCloud Drive is available). API keys are never synced
+- **iCloud Drive sync** — sync usage statistics and (optionally) translation history between Macs on the same Apple ID (enabled when iCloud Drive is available). Settings, provider settings and API keys are never synced
 - **Accessibility** — required to read selected text via simulated Copy. Grant access in System Settings, then fully quit and relaunch LingoPop
 
 ### Providers
@@ -174,7 +174,7 @@ If you'd rather not bypass Gatekeeper at all, build LingoPop from source (see [B
 See [PRIVACY.md](PRIVACY.md). Short version:
 
 - API keys live in `~/Library/Application Support/LingoPop/secrets.dat` — AES-GCM encrypted, key bound to your machine's hardware UUID.
-- Settings and translation history sync via your iCloud Drive folder (you can disable this in Settings → Main).
+- Usage statistics and (optionally) translation history sync via your iCloud Drive folder (you can disable this in Settings → Main). Settings, provider settings and API keys are never synced.
 - The app makes outbound HTTPS calls only to the AI provider you choose. No telemetry, no analytics.
 
 ## Changelog
