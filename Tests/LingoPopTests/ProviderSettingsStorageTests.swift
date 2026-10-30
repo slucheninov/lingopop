@@ -104,6 +104,59 @@ final class ProviderSettingsStorageTests: XCTestCase {
         XCTAssertTrue(plan.clearLegacy)
     }
 
+    func test_migrate_emptyLegacyMapIsTreatedAsNoLegacy() {
+        // After migration the UserDefaults blob keeps an empty `providers` map for older builds.
+        XCTAssertEqual(ProviderSettingsMigration.plan(secure: .loaded([.claude: claude]), legacy: [:]),
+                       .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+        XCTAssertEqual(ProviderSettingsMigration.plan(secure: .absent, legacy: [:]),
+                       .init(providers: nil, writeSecure: false, clearLegacy: false))
+    }
+
+    func test_emptyProvidersMapEncodesAsObjectAndDecodesEmpty() throws {
+        let data = try JSONEncoder().encode(ProviderKeyedDictionary<ProviderConnectionSettings>([:]))
+        XCTAssertEqual(String(data: data, encoding: .utf8), "{}")
+        let decoded = try JSONDecoder().decode(ProviderKeyedDictionary<ProviderConnectionSettings>.self, from: data)
+        XCTAssertTrue(decoded.values.isEmpty)
+    }
+
+    // MARK: Write-before-clear (ProviderSettingsMigration.outcome)
+
+    func test_outcome_failedSecureWriteKeepsLegacy() {
+        let plan = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .absent, secureWriteSucceeded: false)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .secureWriteFailedKeepingLegacy))
+    }
+
+    func test_outcome_successfulSecureWritePermitsClearing() {
+        let plan = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .absent, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: true, mayClearLegacy: true, event: .movedToSecureStore))
+    }
+
+    func test_outcome_failedMergeWriteKeepsLegacyEvenWhenSecureWasLoaded() {
+        let newer = ProviderConnectionSettings(baseURL: "https://new", model: "m2", referer: nil, region: nil)
+        let secure = SecureProviderSettings.loaded([.claude: claude])
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: newer])
+        XCTAssertTrue(plan.writeSecure)
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: false)
+        XCTAssertFalse(outcome.mayClearLegacy)
+        XCTAssertFalse(outcome.providersInSecureStore)
+    }
+
+    func test_outcome_noWriteNeededIgnoresWriteResult() {
+        let secure = SecureProviderSettings.loaded([.claude: claude])
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])
+        XCTAssertFalse(plan.writeSecure)
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: true, mayClearLegacy: true, event: .none))
+    }
+
+    func test_outcome_unavailableSecureNeverClearsOrTrusts() {
+        let plan = ProviderSettingsMigration.plan(secure: .unavailable, legacy: [.claude: claude])
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .unavailable, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .none))
+    }
+
     func test_migrate_secondRunAfterSuccessIsNoop() {
         let first = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
         let second = ProviderSettingsMigration.plan(secure: .loaded(first.providers ?? [:]), legacy: nil)

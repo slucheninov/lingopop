@@ -15,7 +15,7 @@ final class SettingsStore: ObservableObject {
         var fallbacks: ProviderKeyedDictionary<ProviderType>?
         var targetLanguage: String
         /// Legacy location of the per-provider settings (v0.3.19 and older). Read once to migrate them into
-        /// `secrets.dat`; written again only while the secure store is unavailable (so nothing is lost).
+        /// `secrets.dat`; an empty map once the secure store holds the data (older builds require the key), the real map only while the secure store is unavailable (so nothing is lost).
         var providers: ProviderKeyedDictionary<ProviderSettings>?
         var hotkey: HotkeyConfig?
         var hotkeys: [AIOperation: HotkeyConfig]?
@@ -149,19 +149,19 @@ final class SettingsStore: ObservableObject {
     /// Applies the migration plan computed at init: writes the legacy provider settings into `secrets.dat`
     /// and only after that succeeded drops them from UserDefaults. On failure the old data stays untouched.
     private func completeProviderMigration(_ plan: ProviderSettingsMigration.Plan, secure: SecureProviderSettings) {
-        providersInSecureStore = false
-        if plan.writeSecure {
-            guard SecretStorage.saveProviderSettings(providers) else {
-                log.error("Could not move provider settings to secrets.dat; keeping them in UserDefaults and retrying on the next change")
-                return
-            }
+        let writeSucceeded = plan.writeSecure ? SecretStorage.saveProviderSettings(providers) : true
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: writeSucceeded)
+        providersInSecureStore = outcome.providersInSecureStore
+        switch outcome.event {
+        case .none:
+            break
+        case .movedToSecureStore:
             log.info("Moved provider settings to secrets.dat")
+        case .secureWriteFailedKeepingLegacy:
+            log.error("Could not move provider settings to secrets.dat; keeping them in UserDefaults and retrying on the next change")
         }
-        // The secure store holds the data (written now, already there, or there is nothing to store).
-        // `unavailable` is the only state in which it must not be trusted.
-        providersInSecureStore = secure != .unavailable
-        if plan.clearLegacy {
-            save() // rewrites the UserDefaults blob without the legacy `providers` field
+        if outcome.mayClearLegacy {
+            save() // rewrites the UserDefaults blob with an empty `providers` map
             log.info("Removed legacy provider settings from UserDefaults")
         }
     }
@@ -186,7 +186,9 @@ final class SettingsStore: ObservableObject {
             activeProvider: activeProvider,
             fallbacks: fallbacks.isEmpty ? nil : ProviderKeyedDictionary(fallbacks),
             targetLanguage: targetLanguage,
-            providers: providersInSecureStore ? nil : ProviderKeyedDictionary(providers),
+            // Never nil: an older build decodes `providers` as non-optional and would reset every setting if the
+            // key were missing. While `secrets.dat` holds the data the field is an empty map, which this build ignores.
+            providers: providersInSecureStore ? ProviderKeyedDictionary([:]) : ProviderKeyedDictionary(providers),
             hotkey: hotkeys[.translate],
             hotkeys: hotkeys.isEmpty ? nil : hotkeys,
             launchAtLogin: launchAtLogin,

@@ -88,7 +88,11 @@ enum ProviderSettingsMigration {
     ///
     /// When both hold data, the legacy copy wins per provider: it can only exist alongside secure data if
     /// a later secure write failed (so it is newer) or the data was just written from it (so it is equal).
-    static func plan(secure: SecureProviderSettings, legacy: [ProviderType: ProviderConnectionSettings]?) -> Plan {
+    ///
+    /// An empty `legacy` map counts as "no legacy copy": while the secure store holds the data the UserDefaults blob
+    /// keeps an empty `providers` field (so older builds can still decode it), which must not trigger a migration.
+    static func plan(secure: SecureProviderSettings, legacy rawLegacy: [ProviderType: ProviderConnectionSettings]?) -> Plan {
+        let legacy = (rawLegacy?.isEmpty ?? true) ? nil : rawLegacy
         switch secure {
         case .unavailable:
             return Plan(providers: legacy, writeSecure: false, clearLegacy: false)
@@ -100,5 +104,35 @@ enum ProviderSettingsMigration {
             let merged = stored.merging(legacy) { _, legacyValue in legacyValue }
             return Plan(providers: merged, writeSecure: merged != stored, clearLegacy: true)
         }
+    }
+
+    enum Event: Equatable {
+        /// Nothing to log.
+        case none
+        /// Legacy settings were written to the secure store.
+        case movedToSecureStore
+        /// The secure write failed: the legacy copy must be kept and the failure logged.
+        case secureWriteFailedKeepingLegacy
+    }
+
+    struct Outcome: Equatable {
+        /// `secrets.dat` is trusted to hold the provider settings, so the UserDefaults copy may be emptied on `save()`.
+        var providersInSecureStore: Bool
+        /// The legacy copy may be removed from UserDefaults now.
+        var mayClearLegacy: Bool
+        var event: Event
+    }
+
+    /// Write-before-clear rule. `secureWriteSucceeded` is the result of writing `plan.providers` to the secure store;
+    /// it is only consulted when `plan.writeSecure` is true. A failed write never permits clearing the legacy copy.
+    static func outcome(plan: Plan, secure: SecureProviderSettings, secureWriteSucceeded: Bool) -> Outcome {
+        if plan.writeSecure, !secureWriteSucceeded {
+            return Outcome(providersInSecureStore: false, mayClearLegacy: false, event: .secureWriteFailedKeepingLegacy)
+        }
+        // The secure store holds the data (written now, already there, or there is nothing to store);
+        // `unavailable` is the only state in which it must not be trusted.
+        return Outcome(providersInSecureStore: secure != .unavailable,
+                       mayClearLegacy: plan.clearLegacy,
+                       event: plan.writeSecure ? .movedToSecureStore : .none)
     }
 }
