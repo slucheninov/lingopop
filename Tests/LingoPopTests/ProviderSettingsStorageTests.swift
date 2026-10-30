@@ -308,6 +308,33 @@ final class ProviderSettingsStorageTests: XCTestCase {
         XCTAssertFalse(ProviderSettingsMigration.plan(secure: .quarantined, overrides: overrides).clearLegacy)
     }
 
+    func test_quarantineMarker_missingEntryIsQuarantinedNotAbsent() {
+        // Restart, or API keys re-entered into a fresh file: keys only, no providerSettings.v1 entry yet.
+        let keysOnly = ["apiKey.Claude": "sk"]
+        XCTAssertEqual(SecretsPayload.providerSettings(in: keysOnly, lostToQuarantine: true), .quarantined)
+        XCTAssertEqual(SecretsPayload.providerSettings(in: [:], lostToQuarantine: true), .quarantined)
+        XCTAssertEqual(SecretsPayload.providerSettings(in: keysOnly, lostToQuarantine: false), .absent)
+    }
+
+    func test_quarantineMarker_presentEntryBecomesLoadedAgain() throws {
+        var entries = ["apiKey.Claude": "sk"]
+        try SecretsPayload.setProviderSettings([.claude: claude], in: &entries)
+        XCTAssertEqual(SecretsPayload.providerSettings(in: entries, lostToQuarantine: true), .loaded([.claude: claude]))
+    }
+
+    func test_quarantineMarker_doesNotMaskUnavailable() {
+        let corrupt = [SecretsPayload.providerSettingsEntry: "not json"]
+        XCTAssertEqual(SecretsPayload.providerSettings(in: corrupt, lostToQuarantine: true), .unavailable)
+    }
+
+    func test_quarantineMarker_legacyDataSurvivesTheRestartPath() {
+        // Restart after quarantine with real legacy data still in UserDefaults: nothing is migrated or cleared.
+        let secure = SecretsPayload.providerSettings(in: ["apiKey.Claude": "sk"], lostToQuarantine: true)
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+        XCTAssertFalse(ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: true).mayClearLegacy)
+    }
+
     func test_migrate_secondRunAfterSuccessIsNoop() {
         let first = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
         let second = ProviderSettingsMigration.plan(secure: .loaded(first.providers ?? [:]), legacy: nil)

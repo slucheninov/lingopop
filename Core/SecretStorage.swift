@@ -7,6 +7,11 @@ enum SecretStorage {
 
     private static let log = Logger(subsystem: "com.lingopop.app", category: "SecretStorage")
     private static let flagPrefix = "LingoPop.secretHas."
+    // Persisted marker: an undecryptable secrets.dat was moved aside, so the provider settings it held are gone and
+    // an empty store must not be mistaken for a trusted empty one (not even after a restart or after API keys were
+    // re-entered into a new file). Deliberately NOT prefixed with `flagPrefix`, so `quarantineUnreadableFile` keeps it.
+    // Cleared only by a successful `saveProviderSettings` (a deliberate provider edit).
+    private static let quarantineMarkerKey = "LingoPop.providerSettingsLostToQuarantine"
 
     // Single shared folder, created with 0700 permissions on first access.
     private static var folderURL: URL {
@@ -45,9 +50,6 @@ enum SecretStorage {
     // Decrypted entries, kept after the first successful read/write so API keys and provider settings
     // are not re-decrypted on every access. Only set from a successful decrypt or write (guarded by `lock`).
     nonisolated(unsafe) private static var cachedEntries: [String: String]?
-    // Set when an undecryptable secrets.dat was moved aside in this run: the (now empty) store must not be
-    // mistaken for a trusted empty provider-settings store. Cleared by the next successful saveProviderSettings.
-    nonisolated(unsafe) private static var providerSettingsLostToQuarantine = false
 
     // H-1: HKDF-derived key using a persisted random salt (secrets.salt).
     private static func symmetricKey() throws -> SymmetricKey {
@@ -191,21 +193,20 @@ enum SecretStorage {
     /// still works); the provider settings it held are lost from the active store, so this is not a trusted empty store.
     static func loadProviderSettings() -> SecureProviderSettings {
         guard case .available(let store) = loadAll() else { return .unavailable }
-        let result = SecretsPayload.providerSettings(in: store)
-        if case .absent = result, isProviderSettingsLostToQuarantine() { return .quarantined }
-        return result
+        return SecretsPayload.providerSettings(in: store, lostToQuarantine: isProviderSettingsLostToQuarantine())
     }
 
+    // UserDefaults is thread-safe, so no extra locking is needed for the persisted marker.
     private static func isProviderSettingsLostToQuarantine() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return providerSettingsLostToQuarantine
+        UserDefaults.standard.bool(forKey: quarantineMarkerKey)
     }
 
     private static func setProviderSettingsLostToQuarantine(_ value: Bool) {
-        lock.lock()
-        providerSettingsLostToQuarantine = value
-        lock.unlock()
+        if value {
+            UserDefaults.standard.set(true, forKey: quarantineMarkerKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: quarantineMarkerKey)
+        }
     }
 
     /// Replaces the provider-settings entry; API keys and any unknown entries are preserved.
@@ -289,8 +290,9 @@ enum SecretStorage {
             return .unavailable
         }
         // Neither scheme works: move the file aside so the user can re-enter keys.
-        quarantineUnreadableFile(at: url)
+        // Persist the marker first so a crash between the two steps cannot leave an unmarked empty store.
         setProviderSettingsLostToQuarantine(true)
+        quarantineUnreadableFile(at: url)
         return .available([:])
     }
 

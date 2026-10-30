@@ -68,6 +68,15 @@ enum SecretsPayload {
         return .loaded(envelope.providers.values)
     }
 
+    /// Same as `providerSettings(in:)`, but a missing entry is reported as `.quarantined` (not `.absent`) while
+    /// `lostToQuarantine` is set, i.e. after an undecryptable `secrets.dat` was moved aside and no deliberate provider
+    /// edit has been saved since. An entry that is present always wins (`.loaded`), whatever the marker says.
+    static func providerSettings(in entries: [String: String], lostToQuarantine: Bool) -> SecureProviderSettings {
+        let result = providerSettings(in: entries)
+        if case .absent = result, lostToQuarantine { return .quarantined }
+        return result
+    }
+
     /// Stores provider settings into `entries`, leaving every other entry (API keys, unknown entries) untouched.
     static func setProviderSettings(_ settings: [ProviderType: ProviderConnectionSettings], in entries: inout [String: String]) throws {
         let encoder = JSONEncoder()
