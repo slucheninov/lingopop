@@ -267,6 +267,47 @@ final class ProviderSettingsStorageTests: XCTestCase {
         XCTAssertEqual(overrides.reconciled(with: .loaded(legacy)), legacy)
     }
 
+    // MARK: Quarantined secrets.dat
+
+    func test_quarantined_isNeverTrusted() {
+        XCTAssertFalse(SecureProviderSettings.quarantined.isTrusted)
+        XCTAssertFalse(SecureProviderSettings.unavailable.isTrusted)
+        XCTAssertTrue(SecureProviderSettings.absent.isTrusted)
+        XCTAssertTrue(SecureProviderSettings.loaded([:]).isTrusted)
+    }
+
+    func test_quarantined_migratedProfileKeepsDefaultsAndClearsNothing() {
+        // Already migrated: the legacy blob is empty and the real settings only lived in the quarantined file.
+        let plan = ProviderSettingsMigration.plan(secure: .quarantined, legacy: [:])
+        XCTAssertEqual(plan, .init(providers: nil, writeSecure: false, clearLegacy: false))
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .quarantined, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .none))
+    }
+
+    func test_quarantined_doesNotMigrateOrClearRealLegacyData() {
+        let plan = ProviderSettingsMigration.plan(secure: .quarantined, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .quarantined, secureWriteSucceeded: true)
+        XCTAssertFalse(outcome.providersInSecureStore)
+        XCTAssertFalse(outcome.mayClearLegacy)
+    }
+
+    func test_quarantined_onlyADeliberateEditRestartsTheStore() {
+        var overrides = ProviderOverrides(legacy: nil)
+        XCTAssertNil(overrides.reconciled(with: .quarantined))
+        var edited = claude
+        edited.model = "new"
+        overrides.recordEdit(edited, comparedTo: claude, for: .claude)
+        XCTAssertEqual(overrides.reconciled(with: .quarantined), [.claude: edited])
+    }
+
+    func test_quarantined_isNotAbsent() {
+        // `absent` migrates and clears legacy data; `quarantined` must differ in exactly that.
+        let overrides = ProviderOverrides(legacy: [.claude: claude])
+        XCTAssertTrue(ProviderSettingsMigration.plan(secure: .absent, overrides: overrides).clearLegacy)
+        XCTAssertFalse(ProviderSettingsMigration.plan(secure: .quarantined, overrides: overrides).clearLegacy)
+    }
+
     func test_migrate_secondRunAfterSuccessIsNoop() {
         let first = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
         let second = ProviderSettingsMigration.plan(secure: .loaded(first.providers ?? [:]), legacy: nil)

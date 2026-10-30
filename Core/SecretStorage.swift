@@ -45,6 +45,9 @@ enum SecretStorage {
     // Decrypted entries, kept after the first successful read/write so API keys and provider settings
     // are not re-decrypted on every access. Only set from a successful decrypt or write (guarded by `lock`).
     nonisolated(unsafe) private static var cachedEntries: [String: String]?
+    // Set when an undecryptable secrets.dat was moved aside in this run: the (now empty) store must not be
+    // mistaken for a trusted empty provider-settings store. Cleared by the next successful saveProviderSettings.
+    nonisolated(unsafe) private static var providerSettingsLostToQuarantine = false
 
     // H-1: HKDF-derived key using a persisted random salt (secrets.salt).
     private static func symmetricKey() throws -> SymmetricKey {
@@ -184,9 +187,25 @@ enum SecretStorage {
 
     /// Provider settings (base URL, model, referer, region) stored next to the API keys in `secrets.dat`.
     /// `.unavailable` means the file could not be read / decrypted; callers must then leave old data untouched.
+    /// `.quarantined` means the file was undecryptable and moved aside in this run (API keys must be re-entered, which
+    /// still works); the provider settings it held are lost from the active store, so this is not a trusted empty store.
     static func loadProviderSettings() -> SecureProviderSettings {
         guard case .available(let store) = loadAll() else { return .unavailable }
-        return SecretsPayload.providerSettings(in: store)
+        let result = SecretsPayload.providerSettings(in: store)
+        if case .absent = result, isProviderSettingsLostToQuarantine() { return .quarantined }
+        return result
+    }
+
+    private static func isProviderSettingsLostToQuarantine() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return providerSettingsLostToQuarantine
+    }
+
+    private static func setProviderSettingsLostToQuarantine(_ value: Bool) {
+        lock.lock()
+        providerSettingsLostToQuarantine = value
+        lock.unlock()
     }
 
     /// Replaces the provider-settings entry; API keys and any unknown entries are preserved.
@@ -202,7 +221,9 @@ enum SecretStorage {
             log.error("Failed to encode provider settings: \(error.localizedDescription, privacy: .public)")
             return false
         }
-        return saveAll(store)
+        let ok = saveAll(store)
+        if ok { setProviderSettingsLostToQuarantine(false) } // a deliberate write re-establishes a trusted store
+        return ok
     }
 
     private enum LoadResult {
@@ -269,6 +290,7 @@ enum SecretStorage {
         }
         // Neither scheme works: move the file aside so the user can re-enter keys.
         quarantineUnreadableFile(at: url)
+        setProviderSettingsLostToQuarantine(true)
         return .available([:])
     }
 

@@ -16,7 +16,19 @@ enum SecureProviderSettings: Equatable {
     case unavailable
     /// `secrets.dat` is readable but has no provider-settings entry (nothing migrated yet).
     case absent
+    /// `secrets.dat` could not be decrypted in this run and was moved aside (`secrets.dat.bak-*`), so the store is
+    /// now empty. Unlike `.absent` this is NOT a trusted empty store: the provider settings that lived only in the
+    /// quarantined file are lost from the active store, so nothing may be migrated or cleared on that basis.
+    case quarantined
     case loaded([ProviderType: ProviderConnectionSettings])
+
+    /// Whether the store may be treated as the source of truth (legacy data may be cleared once it holds the data).
+    var isTrusted: Bool {
+        switch self {
+        case .absent, .loaded: return true
+        case .unavailable, .quarantined: return false
+        }
+    }
 }
 
 /// Pure (de)serialization of the `secrets.dat` plaintext.
@@ -100,7 +112,8 @@ enum ProviderSettingsMigration {
     static func plan(secure: SecureProviderSettings, overrides: ProviderOverrides) -> Plan {
         let hasLegacy = !overrides.isEmpty
         switch secure {
-        case .unavailable:
+        case .unavailable, .quarantined:
+            // Untrusted: keep whatever real legacy data there is, write nothing, clear nothing.
             return Plan(providers: hasLegacy ? overrides.legacyBlobEntries : nil, writeSecure: false, clearLegacy: false)
         case .absent:
             guard hasLegacy else { return Plan(providers: nil, writeSecure: false, clearLegacy: false) }
@@ -137,9 +150,9 @@ enum ProviderSettingsMigration {
             return Outcome(providersInSecureStore: false, mayClearLegacy: false, event: .secureWriteFailedKeepingLegacy)
         }
         // The secure store holds the data (written now, already there, or there is nothing to store);
-        // `unavailable` is the only state in which it must not be trusted.
-        return Outcome(providersInSecureStore: secure != .unavailable,
-                       mayClearLegacy: plan.clearLegacy,
+        // `unavailable` and `quarantined` are the states in which it must not be trusted.
+        return Outcome(providersInSecureStore: secure.isTrusted,
+                       mayClearLegacy: plan.clearLegacy && secure.isTrusted,
                        event: plan.writeSecure ? .movedToSecureStore : .none)
     }
 }
@@ -234,6 +247,9 @@ struct ProviderOverrides: Equatable {
         switch secure {
         case .unavailable:
             return nil
+        case .quarantined:
+            // The store was reset by a quarantine: only a deliberate user edit may start it again.
+            return entries.isEmpty ? nil : entries.mapValues { $0.applied(to: nil) }
         case .absent:
             return entries.mapValues { $0.applied(to: nil) }
         case .loaded(let stored):

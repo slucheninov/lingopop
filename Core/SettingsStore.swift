@@ -190,7 +190,7 @@ final class SettingsStore: ObservableObject {
         // Re-read the store and apply only the tracked overrides (real legacy data and user edits) on top of it.
         guard let merged = providerOverrides.reconciled(with: SecretStorage.loadProviderSettings()),
               SecretStorage.saveProviderSettings(merged) else {
-            log.error("Failed to save provider settings to secrets.dat; keeping the edits in UserDefaults")
+            log.error("Not writing provider settings to secrets.dat (store unavailable, quarantined without a deliberate edit, or write failed); keeping the edits in UserDefaults")
             save()
             return
         }
