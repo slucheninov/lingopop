@@ -201,6 +201,14 @@ enum SecretStorage {
         UserDefaults.standard.bool(forKey: quarantineMarkerKey)
     }
 
+    /// Sets the quarantine marker and forces it to disk. UserDefaults normally writes asynchronously and
+    /// `synchronize()` is otherwise discouraged, but it is the only way to flush here, which is exactly what is
+    /// needed: the marker must be durable before secrets.dat is moved aside. Also reads the value back.
+    private static func markQuarantineDurably() -> Bool {
+        setProviderSettingsLostToQuarantine(true)
+        return UserDefaults.standard.synchronize() && isProviderSettingsLostToQuarantine()
+    }
+
     private static func setProviderSettingsLostToQuarantine(_ value: Bool) {
         if value {
             UserDefaults.standard.set(true, forKey: quarantineMarkerKey)
@@ -290,8 +298,12 @@ enum SecretStorage {
             return .unavailable
         }
         // Neither scheme works: move the file aside so the user can re-enter keys.
-        // Persist the marker first so a crash between the two steps cannot leave an unmarked empty store.
-        setProviderSettingsLostToQuarantine(true)
+        // Never move the file without a durable marker: otherwise a crash or power loss in between would leave an
+        // empty store with no marker, and the next launch would migrate / clear legacy provider settings unprompted.
+        guard markQuarantineDurably() else {
+            log.error("Could not persist the quarantine marker; leaving the undecryptable secrets.dat in place for this launch")
+            return .unavailable
+        }
         quarantineUnreadableFile(at: url)
         return .available([:])
     }
