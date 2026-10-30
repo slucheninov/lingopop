@@ -4,6 +4,15 @@ All notable changes to LingoPop are documented here. Each release also has auto-
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## v0.4.0 — 2026-10-30
+
+- New Language setting (Settings → Main): System, English, Polski, Українська or Deutsch; LingoPop offers to relaunch to apply the choice
+- Popup: the first two action buttons (for example Copy and Replace) always show their labels; the others show icons for short results and full labels for longer ones
+- iCloud Drive sync now covers only usage statistics and, if you turn it on, translation history. Settings are no longer synced and stay on each Mac; the existing `settings.json` in iCloud is left untouched and ignored
+- Provider settings (base URL, model, region, referer) now live in the encrypted local `secrets.dat` next to your API keys and never go to iCloud. They are migrated automatically on first launch
+- A damaged or truncated `secrets.dat` is moved aside instead of being overwritten, and your other settings are kept; API keys have to be entered again in that case
+- Going back to v0.3.19 on the same Mac keeps API keys working, but provider settings return to their defaults
+
 ## v0.3.19 — 2026-10-29
 
 - The popup now stays inside the visible screen area: near the bottom edge it no longer covers the Dock or goes off-screen as the result loads
