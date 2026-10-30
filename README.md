@@ -173,7 +173,7 @@ If you'd rather not bypass Gatekeeper at all, build LingoPop from source (see [B
 
 See [PRIVACY.md](PRIVACY.md). Short version:
 
-- API keys live in `~/Library/Application Support/LingoPop/secrets.dat` — AES-GCM encrypted, key bound to your machine's hardware UUID.
+- API keys and provider settings live in `~/Library/Application Support/LingoPop/secrets.dat` — AES-GCM encrypted, key bound to your machine's hardware UUID. If that file cannot be read or written, provider settings (not API keys) temporarily stay in local `UserDefaults` until a secure write succeeds.
 - Usage statistics and (optionally) translation history sync via your iCloud Drive folder (you can disable this in Settings → Main). Settings, provider settings and API keys are never synced.
 - The app makes outbound HTTPS calls only to the AI provider you choose. No telemetry, no analytics.
 

@@ -175,13 +175,84 @@ final class ProviderSettingsStorageTests: XCTestCase {
 
     func test_overrides_editWinsOnlyForEditedProvider() {
         let custom = ProviderConnectionSettings(baseURL: "https://custom", model: "mine", referer: nil, region: nil)
+        let generated = ProviderConnectionSettings(baseURL: "https://def", model: "d", referer: nil, region: nil)
         let edited = ProviderConnectionSettings(baseURL: "https://edited", model: "e", referer: nil, region: nil)
         var overrides = ProviderOverrides(legacy: nil)
-        overrides.recordEdit(edited, for: .deepl)
+        overrides.recordEdit(edited, comparedTo: generated, for: .deepl)
         XCTAssertEqual(overrides.legacyBlobEntries, [.deepl: edited])
-        XCTAssertEqual(overrides.reconciled(with: .loaded([.claude: custom, .deepl: ms])), [.claude: custom, .deepl: edited])
+        // Only the edited provider changes; its untouched fields (region) keep the stored value.
+        let expectedDeepL = ProviderConnectionSettings(baseURL: "https://edited", model: "e", referer: nil, region: "westeurope")
+        XCTAssertEqual(overrides.reconciled(with: .loaded([.claude: custom, .deepl: ms])), [.claude: custom, .deepl: expectedDeepL])
         XCTAssertEqual(overrides.reconciled(with: .absent), [.deepl: edited])
         XCTAssertNil(overrides.reconciled(with: .unavailable))
+    }
+
+    func test_overrides_editOfOneFieldTracksOnlyThatField() {
+        // Untrusted store: the draft was built from generated defaults; the user changes just the model.
+        let generated = ProviderConnectionSettings(baseURL: "https://api.anthropic.com", model: "default-model", referer: nil, region: nil)
+        var edited = generated
+        edited.model = "my-model"
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: generated, for: .claude)
+        XCTAssertEqual(overrides.entries[.claude]?.fields, [.model])
+
+        // Later the store is readable and holds custom values for the other fields: they survive.
+        let stored = ProviderConnectionSettings(baseURL: "https://proxy.example", model: "stored-model", referer: "https://r", region: "eu")
+        let merged = overrides.reconciled(with: .loaded([.claude: stored]))
+        XCTAssertEqual(merged?[.claude], ProviderConnectionSettings(baseURL: "https://proxy.example", model: "my-model", referer: "https://r", region: "eu"))
+    }
+
+    func test_overrides_noOpEditTracksNothing() {
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(claude, comparedTo: claude, for: .claude)
+        XCTAssertTrue(overrides.isEmpty)
+        XCTAssertTrue(overrides.legacyBlobEntries.isEmpty)
+        XCTAssertNil(overrides.fieldMasksForBlob)
+    }
+
+    func test_overrides_clearingAFieldIsAGenuineEdit() {
+        var edited = google
+        edited.referer = nil
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: google, for: .googleCloud)
+        XCTAssertEqual(overrides.entries[.googleCloud]?.fields, [.referer])
+        let merged = overrides.reconciled(with: .loaded([.googleCloud: google]))
+        XCTAssertNil(merged?[.googleCloud]?.referer)
+        XCTAssertEqual(merged?[.googleCloud]?.baseURL, google.baseURL)
+    }
+
+    func test_overrides_successiveEditsAccumulateFields() {
+        let base = ProviderConnectionSettings(baseURL: "u", model: "m", referer: nil, region: nil)
+        var step1 = base
+        step1.model = "m2"
+        var step2 = step1
+        step2.region = "eu"
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(step1, comparedTo: base, for: .microsoftTranslator)
+        overrides.recordEdit(step2, comparedTo: step1, for: .microsoftTranslator)
+        XCTAssertEqual(overrides.entries[.microsoftTranslator]?.fields, [.model, .region])
+    }
+
+    func test_overrides_fieldMasksSurviveTheBlobRoundTrip() {
+        let generated = ProviderConnectionSettings(baseURL: "u", model: "m", referer: nil, region: nil)
+        var edited = generated
+        edited.model = "m2"
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: generated, for: .claude)
+        // What save() writes, what the next launch reads back.
+        let reloaded = ProviderOverrides(legacy: overrides.legacyBlobEntries, fieldMasks: overrides.fieldMasksForBlob)
+        XCTAssertEqual(reloaded, overrides)
+        // Next launch with a readable store: the plan keeps the stored custom fields.
+        let stored = ProviderConnectionSettings(baseURL: "https://custom", model: "stored", referer: nil, region: nil)
+        let plan = ProviderSettingsMigration.plan(secure: .loaded([.claude: stored]), overrides: reloaded)
+        XCTAssertEqual(plan.providers?[.claude], ProviderConnectionSettings(baseURL: "https://custom", model: "m2", referer: nil, region: nil))
+        XCTAssertTrue(plan.writeSecure)
+        XCTAssertTrue(plan.clearLegacy)
+    }
+
+    func test_overrides_maskWithOnlyUnknownFieldsOverridesNothing() {
+        let overrides = ProviderOverrides(legacy: [.claude: claude], fieldMasks: [.claude: ["futureField"]])
+        XCTAssertTrue(overrides.isEmpty)
     }
 
     func test_overrides_realLegacyMapStillMigratesAndIsIdempotent() {

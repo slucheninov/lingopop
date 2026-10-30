@@ -91,17 +91,24 @@ enum ProviderSettingsMigration {
     ///
     /// An empty `legacy` map counts as "no legacy copy": while the secure store holds the data the UserDefaults blob
     /// keeps an empty `providers` field (so older builds can still decode it), which must not trigger a migration.
-    static func plan(secure: SecureProviderSettings, legacy rawLegacy: [ProviderType: ProviderConnectionSettings]?) -> Plan {
-        let legacy = (rawLegacy?.isEmpty ?? true) ? nil : rawLegacy
+    static func plan(secure: SecureProviderSettings, legacy: [ProviderType: ProviderConnectionSettings]?) -> Plan {
+        plan(secure: secure, overrides: ProviderOverrides(legacy: legacy))
+    }
+
+    /// Same as `plan(secure:legacy:)`, but the legacy copy may carry field masks (see `ProviderOverrides`), in which
+    /// case only the masked fields override the stored entry instead of replacing it as a whole.
+    static func plan(secure: SecureProviderSettings, overrides: ProviderOverrides) -> Plan {
+        let hasLegacy = !overrides.isEmpty
         switch secure {
         case .unavailable:
-            return Plan(providers: legacy, writeSecure: false, clearLegacy: false)
+            return Plan(providers: hasLegacy ? overrides.legacyBlobEntries : nil, writeSecure: false, clearLegacy: false)
         case .absent:
-            guard let legacy else { return Plan(providers: nil, writeSecure: false, clearLegacy: false) }
-            return Plan(providers: legacy, writeSecure: true, clearLegacy: true)
+            guard hasLegacy else { return Plan(providers: nil, writeSecure: false, clearLegacy: false) }
+            return Plan(providers: overrides.legacyBlobEntries, writeSecure: true, clearLegacy: true)
         case .loaded(let stored):
-            guard let legacy else { return Plan(providers: stored, writeSecure: false, clearLegacy: false) }
-            let merged = stored.merging(legacy) { _, legacyValue in legacyValue }
+            guard hasLegacy, let merged = overrides.reconciled(with: secure) else {
+                return Plan(providers: stored, writeSecure: false, clearLegacy: false)
+            }
             return Plan(providers: merged, writeSecure: merged != stored, clearLegacy: true)
         }
     }
@@ -137,20 +144,72 @@ enum ProviderSettingsMigration {
     }
 }
 
-/// Tracks which in-memory provider settings are **real user data that must override `secrets.dat`** while the secure
-/// store cannot be trusted (unreadable at launch, or a write failed): entries that came from a real legacy UserDefaults
-/// map, plus entries the user edited since. Generated defaults and entries merely loaded from `secrets.dat` are never
-/// tracked, so they can neither be persisted as a legacy copy nor override secure-store values on reconcile.
-struct ProviderOverrides: Equatable {
-    private(set) var entries: [ProviderType: ProviderConnectionSettings]
-
-    /// - Parameter legacy: the `providers` map found in the UserDefaults blob (nil or empty means none).
-    init(legacy: [ProviderType: ProviderConnectionSettings]? = nil) {
-        entries = legacy ?? [:]
+/// One provider's real user data that must override `secrets.dat`: the fields the user actually changed (or all fields
+/// for an entry that came from a real legacy map) together with the full settings they were taken from.
+struct ProviderFieldOverride: Equatable {
+    enum Field: String, CaseIterable, Codable {
+        case baseURL, model, referer, region
     }
 
-    mutating func recordEdit(_ settings: ProviderConnectionSettings, for provider: ProviderType) {
-        entries[provider] = settings
+    var fields: Set<Field>
+    var values: ProviderConnectionSettings
+
+    static func changedFields(from old: ProviderConnectionSettings, to new: ProviderConnectionSettings) -> Set<Field> {
+        var changed = Set<Field>()
+        if old.baseURL != new.baseURL { changed.insert(.baseURL) }
+        if old.model != new.model { changed.insert(.model) }
+        if old.referer != new.referer { changed.insert(.referer) }
+        if old.region != new.region { changed.insert(.region) }
+        return changed
+    }
+
+    /// `base` with only the overridden fields replaced. Without a base (nothing stored) the full values are used.
+    func applied(to base: ProviderConnectionSettings?) -> ProviderConnectionSettings {
+        guard var result = base else { return values }
+        if fields.contains(.baseURL) { result.baseURL = values.baseURL }
+        if fields.contains(.model) { result.model = values.model }
+        if fields.contains(.referer) { result.referer = values.referer }
+        if fields.contains(.region) { result.region = values.region }
+        return result
+    }
+}
+
+/// Tracks which in-memory provider settings are **real user data that must override `secrets.dat`** while the secure
+/// store cannot be trusted (unreadable at launch, or a write failed): entries from a real legacy UserDefaults map, plus
+/// the individual **fields** the user changed since. Generated defaults, entries merely loaded from `secrets.dat` and
+/// fields the user did not touch are never tracked, so they can neither be persisted as a legacy copy nor override
+/// secure-store values on reconcile (the Providers tab draft is built from generated defaults when nothing is stored,
+/// so a whole-entry override would wipe stored custom fields the user never touched).
+struct ProviderOverrides: Equatable {
+    private(set) var entries: [ProviderType: ProviderFieldOverride]
+
+    /// - Parameters:
+    ///   - legacy: the `providers` map found in the UserDefaults blob (nil or empty means none).
+    ///   - fieldMasks: per provider, the field names that map entry really overrides (written by this build while the
+    ///     secure store was untrusted). A legacy entry without a mask is a whole real entry (all fields).
+    init(legacy: [ProviderType: ProviderConnectionSettings]? = nil, fieldMasks: [ProviderType: [String]]? = nil) {
+        entries = [:]
+        for (provider, values) in legacy ?? [:] {
+            let fields: Set<ProviderFieldOverride.Field>
+            if let names = fieldMasks?[provider] {
+                fields = Set(names.compactMap(ProviderFieldOverride.Field.init(rawValue:)))
+            } else {
+                fields = Set(ProviderFieldOverride.Field.allCases)
+            }
+            // A mask with no known field overrides nothing: never fall back to replacing the whole entry.
+            if !fields.isEmpty { entries[provider] = ProviderFieldOverride(fields: fields, values: values) }
+        }
+    }
+
+    var isEmpty: Bool { entries.isEmpty }
+
+    /// Records a user edit. Only fields whose value differs from `previous` (the settings the draft was built from)
+    /// are tracked; an edit that changes nothing tracks nothing.
+    mutating func recordEdit(_ incoming: ProviderConnectionSettings, comparedTo previous: ProviderConnectionSettings, for provider: ProviderType) {
+        let changed = ProviderFieldOverride.changedFields(from: previous, to: incoming)
+        guard !changed.isEmpty else { return }
+        let existing = entries[provider]?.fields ?? []
+        entries[provider] = ProviderFieldOverride(fields: existing.union(changed), values: incoming)
     }
 
     /// Call once the secure store holds everything (after a successful write).
@@ -159,16 +218,30 @@ struct ProviderOverrides: Equatable {
     }
 
     /// What to write into the UserDefaults `providers` field while the secure store is not trusted.
-    /// Only real data, never generated defaults.
-    var legacyBlobEntries: [ProviderType: ProviderConnectionSettings] { entries }
+    /// Only real data, never generated defaults (for a field-level entry the untouched fields are filler).
+    var legacyBlobEntries: [ProviderType: ProviderConnectionSettings] { entries.mapValues(\.values) }
+
+    /// Field masks to persist next to `legacyBlobEntries` (only for entries that do not override every field).
+    var fieldMasksForBlob: [ProviderType: [String]]? {
+        let partial = entries.filter { $0.value.fields.count < ProviderFieldOverride.Field.allCases.count }
+        guard !partial.isEmpty else { return nil }
+        return partial.mapValues { $0.fields.map(\.rawValue).sorted() }
+    }
 
     /// The map to write to the secure store once it can be read again: what it already holds with the tracked
-    /// overrides applied on top (override wins only for the entries listed here). nil if the store is unavailable.
+    /// fields applied on top, field by field (never replacing a stored entry as a whole). nil if unavailable.
     func reconciled(with secure: SecureProviderSettings) -> [ProviderType: ProviderConnectionSettings]? {
         switch secure {
-        case .unavailable: return nil
-        case .absent: return entries
-        case .loaded(let stored): return stored.merging(entries) { _, override in override }
+        case .unavailable:
+            return nil
+        case .absent:
+            return entries.mapValues { $0.applied(to: nil) }
+        case .loaded(let stored):
+            var result = stored
+            for (provider, override) in entries {
+                result[provider] = override.applied(to: stored[provider])
+            }
+            return result
         }
     }
 }

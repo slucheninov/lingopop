@@ -17,6 +17,9 @@ final class SettingsStore: ObservableObject {
         /// Legacy location of the per-provider settings (v0.3.19 and older). Read once to migrate them into
         /// `secrets.dat`; an empty map once the secure store holds the data (older builds require the key), only the real (legacy or user-edited) entries while the secure store is unavailable (so nothing is lost; generated defaults are never written).
         var providers: ProviderKeyedDictionary<ProviderSettings>?
+        /// Only written together with a non-empty legacy `providers` map while the secure store is untrusted: per provider,
+        /// the fields of that entry which are real user data (the rest is filler). Absent = the whole entry is real.
+        var providerOverrideFields: ProviderKeyedDictionary<[String]>?
         var hotkey: HotkeyConfig?
         var hotkeys: [AIOperation: HotkeyConfig]?
         var launchAtLogin: Bool?
@@ -85,7 +88,8 @@ final class SettingsStore: ObservableObject {
         self.fallbacks = loaded.persisted.fallbacks?.values ?? [:]
         self.targetLanguage = loaded.persisted.targetLanguage
         let secure = SecretStorage.loadProviderSettings()
-        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: loaded.providers?.values)
+        let overrides = ProviderOverrides(legacy: loaded.providers?.values, fieldMasks: loaded.persisted.providerOverrideFields?.values)
+        let plan = ProviderSettingsMigration.plan(secure: secure, overrides: overrides)
         self.providers = plan.providers ?? Self.defaultProviders()
         if var migrated = loaded.persisted.hotkeys {
             if migrated[.translate] == nil, let legacy = loaded.persisted.hotkey {
@@ -111,7 +115,7 @@ final class SettingsStore: ObservableObject {
         self.magicPrompt = loaded.persisted.magicPrompt ?? PromptBuilder.defaultMagicPrompt
         installAutoSave()
         installProviderPersistence()
-        providerOverrides = ProviderOverrides(legacy: loaded.providers?.values)
+        providerOverrides = overrides
         completeProviderMigration(plan, secure: secure)
     }
 
@@ -204,6 +208,7 @@ final class SettingsStore: ObservableObject {
             // Never nil: an older build decodes `providers` as non-optional and would reset every setting if the
             // key were missing. While `secrets.dat` holds the data the field is an empty map, which this build ignores.
             providers: ProviderKeyedDictionary(providersInSecureStore ? [:] : providerOverrides.legacyBlobEntries),
+            providerOverrideFields: providersInSecureStore ? nil : providerOverrides.fieldMasksForBlob.map { ProviderKeyedDictionary($0) },
             hotkey: hotkeys[.translate],
             hotkeys: hotkeys.isEmpty ? nil : hotkeys,
             launchAtLogin: launchAtLogin,
@@ -254,7 +259,7 @@ final class SettingsStore: ObservableObject {
     }
 
     func updateSettings(_ settings: ProviderSettings, for provider: ProviderType) {
-        providerOverrides.recordEdit(settings, for: provider)
+        providerOverrides.recordEdit(settings, comparedTo: self.settings(for: provider), for: provider)
         providers[provider] = settings
     }
 
@@ -343,6 +348,7 @@ final class SettingsStore: ObservableObject {
             fallbacks: nil,
             targetLanguage: "Ukrainian",
             providers: nil,
+            providerOverrideFields: nil,
             hotkey: nil,
             launchAtLogin: nil,
             maxInputChars: nil,
