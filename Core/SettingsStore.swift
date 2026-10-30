@@ -15,7 +15,7 @@ final class SettingsStore: ObservableObject {
         var fallbacks: ProviderKeyedDictionary<ProviderType>?
         var targetLanguage: String
         /// Legacy location of the per-provider settings (v0.3.19 and older). Read once to migrate them into
-        /// `secrets.dat`; an empty map once the secure store holds the data (older builds require the key), the real map only while the secure store is unavailable (so nothing is lost).
+        /// `secrets.dat`; an empty map once the secure store holds the data (older builds require the key), only the real (legacy or user-edited) entries while the secure store is unavailable (so nothing is lost; generated defaults are never written).
         var providers: ProviderKeyedDictionary<ProviderSettings>?
         var hotkey: HotkeyConfig?
         var hotkeys: [AIOperation: HotkeyConfig]?
@@ -61,6 +61,9 @@ final class SettingsStore: ObservableObject {
     /// True once `secrets.dat` is known to hold the provider settings; the UserDefaults copy is then omitted.
     /// While false (secure store unreadable or a write failed) `save()` keeps writing the legacy copy.
     private var providersInSecureStore = false
+    /// Real user data (legacy map entries and edits) that must win over `secrets.dat` until it is trusted again.
+    /// Generated defaults are never in here, so they are never written to UserDefaults or into `secrets.dat`.
+    private var providerOverrides = ProviderOverrides()
     private let log = Logger(subsystem: "com.lingopop.app", category: "SettingsStore")
 
     static func sanitizeMagicPrompt(_ input: String) -> String {
@@ -108,6 +111,7 @@ final class SettingsStore: ObservableObject {
         self.magicPrompt = loaded.persisted.magicPrompt ?? PromptBuilder.defaultMagicPrompt
         installAutoSave()
         installProviderPersistence()
+        providerOverrides = ProviderOverrides(legacy: loaded.providers?.values)
         completeProviderMigration(plan, secure: secure)
     }
 
@@ -152,6 +156,7 @@ final class SettingsStore: ObservableObject {
         let writeSucceeded = plan.writeSecure ? SecretStorage.saveProviderSettings(providers) : true
         let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: writeSucceeded)
         providersInSecureStore = outcome.providersInSecureStore
+        if outcome.providersInSecureStore { providerOverrides.clear() }
         switch outcome.event {
         case .none:
             break
@@ -167,18 +172,28 @@ final class SettingsStore: ObservableObject {
     }
 
     private func persistProviders() {
-        if SecretStorage.saveProviderSettings(providers) {
-            if !providersInSecureStore {
-                providersInSecureStore = true
-                save() // drop the legacy UserDefaults copy now that secrets.dat holds the data
-            }
-        } else {
-            log.error("Failed to save provider settings to secrets.dat; keeping them in UserDefaults")
-            if providersInSecureStore {
+        if providersInSecureStore {
+            if SecretStorage.saveProviderSettings(providers) {
+                providerOverrides.clear()
+            } else {
+                log.error("Failed to save provider settings to secrets.dat; keeping the edits in UserDefaults")
                 providersInSecureStore = false
-                save()
+                save() // writes only the tracked edits as the legacy copy
             }
+            return
         }
+        // The secure store was not trusted: `providers` may hold generated defaults, so never write it wholesale.
+        // Re-read the store and apply only the tracked overrides (real legacy data and user edits) on top of it.
+        guard let merged = providerOverrides.reconciled(with: SecretStorage.loadProviderSettings()),
+              SecretStorage.saveProviderSettings(merged) else {
+            log.error("Failed to save provider settings to secrets.dat; keeping the edits in UserDefaults")
+            save()
+            return
+        }
+        providersInSecureStore = true
+        providerOverrides.clear()
+        if providers != merged { providers = merged } // show what the secure store holds
+        save() // empties the legacy `providers` map in UserDefaults
     }
 
     func save() {
@@ -188,7 +203,7 @@ final class SettingsStore: ObservableObject {
             targetLanguage: targetLanguage,
             // Never nil: an older build decodes `providers` as non-optional and would reset every setting if the
             // key were missing. While `secrets.dat` holds the data the field is an empty map, which this build ignores.
-            providers: providersInSecureStore ? ProviderKeyedDictionary([:]) : ProviderKeyedDictionary(providers),
+            providers: ProviderKeyedDictionary(providersInSecureStore ? [:] : providerOverrides.legacyBlobEntries),
             hotkey: hotkeys[.translate],
             hotkeys: hotkeys.isEmpty ? nil : hotkeys,
             launchAtLogin: launchAtLogin,
@@ -239,6 +254,7 @@ final class SettingsStore: ObservableObject {
     }
 
     func updateSettings(_ settings: ProviderSettings, for provider: ProviderType) {
+        providerOverrides.recordEdit(settings, for: provider)
         providers[provider] = settings
     }
 

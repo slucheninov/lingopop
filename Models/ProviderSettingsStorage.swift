@@ -136,3 +136,39 @@ enum ProviderSettingsMigration {
                        event: plan.writeSecure ? .movedToSecureStore : .none)
     }
 }
+
+/// Tracks which in-memory provider settings are **real user data that must override `secrets.dat`** while the secure
+/// store cannot be trusted (unreadable at launch, or a write failed): entries that came from a real legacy UserDefaults
+/// map, plus entries the user edited since. Generated defaults and entries merely loaded from `secrets.dat` are never
+/// tracked, so they can neither be persisted as a legacy copy nor override secure-store values on reconcile.
+struct ProviderOverrides: Equatable {
+    private(set) var entries: [ProviderType: ProviderConnectionSettings]
+
+    /// - Parameter legacy: the `providers` map found in the UserDefaults blob (nil or empty means none).
+    init(legacy: [ProviderType: ProviderConnectionSettings]? = nil) {
+        entries = legacy ?? [:]
+    }
+
+    mutating func recordEdit(_ settings: ProviderConnectionSettings, for provider: ProviderType) {
+        entries[provider] = settings
+    }
+
+    /// Call once the secure store holds everything (after a successful write).
+    mutating func clear() {
+        entries = [:]
+    }
+
+    /// What to write into the UserDefaults `providers` field while the secure store is not trusted.
+    /// Only real data, never generated defaults.
+    var legacyBlobEntries: [ProviderType: ProviderConnectionSettings] { entries }
+
+    /// The map to write to the secure store once it can be read again: what it already holds with the tracked
+    /// overrides applied on top (override wins only for the entries listed here). nil if the store is unavailable.
+    func reconciled(with secure: SecureProviderSettings) -> [ProviderType: ProviderConnectionSettings]? {
+        switch secure {
+        case .unavailable: return nil
+        case .absent: return entries
+        case .loaded(let stored): return stored.merging(entries) { _, override in override }
+        }
+    }
+}

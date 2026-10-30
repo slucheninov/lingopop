@@ -157,6 +157,45 @@ final class ProviderSettingsStorageTests: XCTestCase {
         XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .none))
     }
 
+    // MARK: ProviderOverrides (secure store unavailable)
+
+    func test_overrides_unavailableStoreWithoutLegacyPersistsNoDefaults() {
+        // Secure store unreadable, blob had an empty map: the in-memory values are generated defaults.
+        let overrides = ProviderOverrides(legacy: [:])
+        XCTAssertTrue(overrides.legacyBlobEntries.isEmpty)
+        XCTAssertTrue(ProviderOverrides(legacy: nil).legacyBlobEntries.isEmpty)
+        XCTAssertNil(overrides.reconciled(with: .unavailable))
+    }
+
+    func test_overrides_defaultsNeverOverrideCustomSettingsOnceStoreIsReadable() {
+        let custom = ProviderConnectionSettings(baseURL: "https://custom", model: "mine", referer: nil, region: nil)
+        let overrides = ProviderOverrides(legacy: nil)
+        XCTAssertEqual(overrides.reconciled(with: .loaded([.claude: custom, .deepl: ms])), [.claude: custom, .deepl: ms])
+    }
+
+    func test_overrides_editWinsOnlyForEditedProvider() {
+        let custom = ProviderConnectionSettings(baseURL: "https://custom", model: "mine", referer: nil, region: nil)
+        let edited = ProviderConnectionSettings(baseURL: "https://edited", model: "e", referer: nil, region: nil)
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, for: .deepl)
+        XCTAssertEqual(overrides.legacyBlobEntries, [.deepl: edited])
+        XCTAssertEqual(overrides.reconciled(with: .loaded([.claude: custom, .deepl: ms])), [.claude: custom, .deepl: edited])
+        XCTAssertEqual(overrides.reconciled(with: .absent), [.deepl: edited])
+        XCTAssertNil(overrides.reconciled(with: .unavailable))
+    }
+
+    func test_overrides_realLegacyMapStillMigratesAndIsIdempotent() {
+        let legacy: [ProviderType: ProviderConnectionSettings] = [.claude: claude, .googleCloud: google]
+        var overrides = ProviderOverrides(legacy: legacy)
+        XCTAssertEqual(overrides.legacyBlobEntries, legacy)
+        // Secure store readable and empty: the legacy data is written as-is.
+        XCTAssertEqual(overrides.reconciled(with: .absent), legacy)
+        // After a successful write the overrides are cleared; a second pass changes nothing.
+        overrides.clear()
+        XCTAssertTrue(overrides.legacyBlobEntries.isEmpty)
+        XCTAssertEqual(overrides.reconciled(with: .loaded(legacy)), legacy)
+    }
+
     func test_migrate_secondRunAfterSuccessIsNoop() {
         let first = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
         let second = ProviderSettingsMigration.plan(secure: .loaded(first.providers ?? [:]), legacy: nil)
