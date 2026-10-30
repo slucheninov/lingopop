@@ -1018,6 +1018,35 @@
         }
       }
     },
+    "Could not relaunch LingoPop" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not relaunch LingoPop"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się ponownie uruchomić LingoPop"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося перезапустити LingoPop"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LingoPop konnte nicht neu gestartet werden"
+          }
+        }
+      }
+    },
     "Couldn't switch back to the original app, so nothing was replaced. The text is on your clipboard; paste it manually with ⌘V." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2178,6 +2207,35 @@
         }
       }
     },
+    "Language" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Język"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мова"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache"
+          }
+        }
+      }
+    },
     "Language pairs" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2857,6 +2915,35 @@
         }
       }
     },
+    "OK" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3292,6 +3379,35 @@
         }
       }
     },
+    "Quit LingoPop from the menu bar and open it again to apply the new language." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit LingoPop from the menu bar and open it again to apply the new language."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zakończ LingoPop z paska menu i otwórz go ponownie, aby zastosować nowy język."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вийдіть із LingoPop у рядку меню та відкрийте його знову, щоб застосувати нову мову."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LingoPop über die Menüleiste beenden und erneut öffnen, um die neue Sprache anzuwenden."
+          }
+        }
+      }
+    },
     "Rate limit exceeded. Wait a moment and retry." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3491,6 +3607,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Region darf nur Buchstaben, Ziffern, „-“ und „_“ enthalten"
+          }
+        }
+      }
+    },
+    "Relaunch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relaunch"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uruchom ponownie"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перезапустити"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu starten"
           }
         }
       }
@@ -3839,6 +3984,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Antwort wurde gekürzt"
+          }
+        }
+      }
+    },
+    "Restart LingoPop to apply the new language." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restart LingoPop to apply the new language."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uruchom ponownie LingoPop, aby zastosować nowy język."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перезапустіть LingoPop, щоб застосувати нову мову."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LingoPop neu starten, um die neue Sprache anzuwenden."
           }
         }
       }
@@ -4651,6 +4825,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Synchronisiert Einstellungen zwischen Macs, die mit derselben Apple-ID angemeldet sind. API-Schlüssel bleiben lokal auf dem jeweiligen Computer."
+          }
+        }
+      }
+    },
+    "System" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemowy"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Системна"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
           }
         }
       }

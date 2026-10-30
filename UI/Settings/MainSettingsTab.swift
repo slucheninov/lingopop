@@ -7,6 +7,28 @@ struct MainSettingsTab: View {
     @State private var screenRecordingGranted: Bool = PermissionsManager.isScreenRecordingGranted()
     @AppStorage(PopupPrefs.fontSizeKey) private var popupFontSize: Double = PopupPrefs.defaultFontSize
 
+    @State private var selectedAppLanguage = AppLanguage.stored()
+
+    /// True when the language the saved choice would produce differs from the one the
+    /// running UI was loaded with (also covers a `-AppleLanguages` launch argument).
+    private var appLanguageChanged: Bool {
+        AppLanguage.needsRelaunch(
+            choice: selectedAppLanguage,
+            launchedEffective: AppLanguage.launchedEffective,
+            systemPreferences: AppLanguage.systemPreferences()
+        )
+    }
+
+    private var appLanguageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { selectedAppLanguage },
+            set: { newValue in
+                selectedAppLanguage = newValue
+                newValue.save()
+            }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Target language") {
@@ -37,6 +59,26 @@ struct MainSettingsTab: View {
                             .font(.system(size: 12).monospacedDigit())
                             .foregroundStyle(.secondary)
                             .frame(width: 36, alignment: .trailing)
+                    }
+                }
+            }
+
+            Section("Language") {
+                Picker("Language", selection: appLanguageBinding) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        if let name = lang.nativeName {
+                            Text(verbatim: name).tag(lang)
+                        } else {
+                            Text("System").tag(lang)
+                        }
+                    }
+                }
+                if appLanguageChanged {
+                    HStack(spacing: 8) {
+                        Text("Restart LingoPop to apply the new language.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Relaunch") { AppRelauncher.relaunch() }
                     }
                 }
             }
