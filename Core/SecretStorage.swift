@@ -265,10 +265,17 @@ enum SecretStorage {
             log.error("Failed to read secrets.dat: \(error.localizedDescription, privacy: .public)")
             return .unavailable
         }
-        // Smaller than nonce (12) + tag (16): not a sealed box, nothing to recover.
-        guard data.count >= 28 else {
-            log.error("secrets.dat is too short (\(data.count) bytes); treating as empty")
+        switch SecretsPayload.fileState(byteCount: data.count) {
+        case .empty:
+            // Nothing in it to lose or to back up: same as no file.
+            log.error("secrets.dat is empty (0 bytes); treating as no file")
             return .available([:])
+        case .truncated:
+            // Not a sealed box: damaged. Never overwrite it silently; quarantine it like an undecryptable file.
+            log.error("secrets.dat is truncated (\(data.count) bytes); quarantining it")
+            return quarantineAndResetStore(at: url)
+        case .sealed:
+            break
         }
         let key: SymmetricKey
         do {
@@ -298,13 +305,22 @@ enum SecretStorage {
             return .unavailable
         }
         // Neither scheme works: move the file aside so the user can re-enter keys.
-        // Never move the file without a durable marker: otherwise a crash or power loss in between would leave an
-        // empty store with no marker, and the next launch would migrate / clear legacy provider settings unprompted.
+        return quarantineAndResetStore(at: url)
+    }
+
+    /// Moves an unreadable `secrets.dat` aside and starts an empty store so API keys can be re-entered.
+    /// Never moves the file without a durable marker: otherwise a crash or power loss in between would leave an
+    /// empty store with no marker, and the next launch would migrate / clear legacy provider settings unprompted.
+    /// If the marker or the move fails, the original file stays in place and the store is `.unavailable`, so
+    /// callers refuse writes instead of overwriting the only copy.
+    private static func quarantineAndResetStore(at url: URL) -> LoadResult {
         guard markQuarantineDurably() else {
-            log.error("Could not persist the quarantine marker; leaving the undecryptable secrets.dat in place for this launch")
+            log.error("Could not persist the quarantine marker; leaving the unreadable secrets.dat in place for this launch")
             return .unavailable
         }
-        quarantineUnreadableFile(at: url)
+        guard quarantineUnreadableFile(at: url) else {
+            return .unavailable
+        }
         return .available([:])
     }
 
@@ -318,20 +334,21 @@ enum SecretStorage {
         }
     }
 
-    private static func quarantineUnreadableFile(at url: URL) {
+    private static func quarantineUnreadableFile(at url: URL) -> Bool {
         let stamp = Int(Date().timeIntervalSince1970)
         let backup = url.deletingLastPathComponent().appendingPathComponent("secrets.dat.bak-\(stamp)")
         do {
             try FileManager.default.moveItem(at: url, to: backup)
-            log.error("secrets.dat could not be decrypted; moved to \(backup.lastPathComponent, privacy: .public)")
+            log.error("secrets.dat could not be read; moved to \(backup.lastPathComponent, privacy: .public)")
         } catch {
-            log.error("Failed to move undecryptable secrets.dat aside: \(error.localizedDescription, privacy: .public)")
-            return
+            log.error("Failed to move unreadable secrets.dat aside: \(error.localizedDescription, privacy: .public)")
+            return false
         }
         let defaults = UserDefaults.standard
         for name in defaults.dictionaryRepresentation().keys where name.hasPrefix(flagPrefix) {
             defaults.removeObject(forKey: name)
         }
+        return true
     }
 
     private static func saveAll(_ store: [String: String]) -> Bool {

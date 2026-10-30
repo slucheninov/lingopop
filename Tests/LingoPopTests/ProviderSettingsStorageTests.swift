@@ -335,6 +335,23 @@ final class ProviderSettingsStorageTests: XCTestCase {
         XCTAssertFalse(ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: true).mayClearLegacy)
     }
 
+    func test_fileState_classifiesBySize() {
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 0), .empty)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 1), .truncated)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 27), .truncated)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 28), .sealed)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 4096), .sealed)
+        XCTAssertEqual(SecretsPayload.minimumSealedSize, 12 + 16)
+    }
+
+    func test_truncatedFileIsTreatedLikeQuarantine() {
+        // A truncated file leads to the quarantine path: provider settings are untrusted, nothing migrates or clears.
+        let secure = SecretsPayload.providerSettings(in: [:], lostToQuarantine: true)
+        XCTAssertEqual(secure, .quarantined)
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+    }
+
     func test_migrate_secondRunAfterSuccessIsNoop() {
         let first = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
         let second = ProviderSettingsMigration.plan(secure: .loaded(first.providers ?? [:]), legacy: nil)

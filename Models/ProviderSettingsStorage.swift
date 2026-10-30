@@ -47,6 +47,26 @@ enum SecretsPayload {
         var providers: ProviderKeyedDictionary<ProviderConnectionSettings>
     }
 
+    /// How an existing `secrets.dat` is treated, judged by its size alone.
+    enum FileState: Equatable {
+        /// Zero bytes: holds nothing to preserve, so it is equivalent to "no file" (not quarantined, no backup made).
+        /// Our own writes (temp file + atomic rename) never produce it.
+        case empty
+        /// 1 ..< `minimumSealedSize` bytes: cannot be an AES-GCM sealed box (nonce 12 + tag 16), i.e. a damaged file.
+        /// Handled exactly like an undecryptable file: quarantined, never silently overwritten.
+        case truncated
+        /// Large enough to be a sealed box; decryption decides whether it is readable.
+        case sealed
+    }
+
+    /// AES-GCM combined representation: 12-byte nonce + 16-byte tag, with an empty ciphertext at the very least.
+    static let minimumSealedSize = 28
+
+    static func fileState(byteCount: Int) -> FileState {
+        if byteCount <= 0 { return .empty }
+        return byteCount < minimumSealedSize ? .truncated : .sealed
+    }
+
     /// Decodes the plaintext of `secrets.dat`. Returns nil if it is not a flat string map.
     static func decode(_ plaintext: Data) -> [String: String]? {
         try? JSONDecoder().decode([String: String].self, from: plaintext)
