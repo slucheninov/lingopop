@@ -115,14 +115,14 @@ struct MainSettingsTab: View {
                         .font(.system(size: 12))
                     Spacer()
                 }
-                Toggle("Sync settings via iCloud Drive", isOn: $store.iCloudSync)
+                Toggle("Sync usage statistics via iCloud Drive", isOn: $store.iCloudSync)
                     .disabled(!CloudStorage.isAvailable)
                 Toggle("Sync translation history to iCloud", isOn: $store.syncHistoryToiCloud)
                     .disabled(!store.iCloudSync)
                 Text("History contains your translated texts. Disabled by default for privacy.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Syncs settings between Macs signed into the same Apple ID. API keys stay local per machine.")
+                Text("Syncs usage statistics and, if enabled, translation history between Macs signed into the same Apple ID. Settings, provider settings and API keys stay local on each Mac.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

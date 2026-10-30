@@ -1,0 +1,444 @@
+import XCTest
+
+final class ProviderSettingsStorageTests: XCTestCase {
+
+    private let claude = ProviderConnectionSettings(baseURL: "https://api.anthropic.com", model: "m1", referer: nil, region: nil)
+    private let ms = ProviderConnectionSettings(baseURL: "https://ms", model: "", referer: nil, region: "westeurope")
+    private let google = ProviderConnectionSettings(baseURL: "https://g", model: "", referer: "https://ref", region: nil)
+
+    // MARK: SecretsPayload
+
+    func test_decodesOldKeyOnlyFormat() throws {
+        let plaintext = Data(#"{"apiKey.Claude":"sk-1","apiKey.Google (Free)":"x"}"#.utf8)
+        let entries = try XCTUnwrap(SecretsPayload.decode(plaintext))
+        XCTAssertEqual(entries, ["apiKey.Claude": "sk-1", "apiKey.Google (Free)": "x"])
+        XCTAssertEqual(SecretsPayload.providerSettings(in: entries), .absent)
+    }
+
+    func test_rejectsNonFlatStringMap() {
+        XCTAssertNil(SecretsPayload.decode(Data(#"{"version":2,"secrets":{}}"#.utf8)))
+        XCTAssertNil(SecretsPayload.decode(Data("[1,2]".utf8)))
+    }
+
+    func test_providerSettingsRoundTripKeepsApiKeys() throws {
+        var entries = ["apiKey.Claude": "sk-1"]
+        try SecretsPayload.setProviderSettings([.claude: claude, .microsoftTranslator: ms, .googleCloud: google], in: &entries)
+        let reread = try XCTUnwrap(SecretsPayload.decode(try SecretsPayload.encode(entries)))
+        XCTAssertEqual(reread["apiKey.Claude"], "sk-1")
+        XCTAssertEqual(SecretsPayload.providerSettings(in: reread),
+                       .loaded([.claude: claude, .microsoftTranslator: ms, .googleCloud: google]))
+    }
+
+    func test_newPayloadIsStillAFlatStringMapForOlderReaders() throws {
+        var entries = ["apiKey.DeepL": "k"]
+        try SecretsPayload.setProviderSettings([.deepl: claude], in: &entries)
+        let plaintext = try SecretsPayload.encode(entries)
+        let flat = try JSONDecoder().decode([String: String].self, from: plaintext)
+        XCTAssertEqual(flat["apiKey.DeepL"], "k")
+        XCTAssertNotNil(flat[SecretsPayload.providerSettingsEntry])
+    }
+
+    func test_setProviderSettingsPreservesUnknownEntries() throws {
+        var entries = ["apiKey.Claude": "k", "futureEntry": "v"]
+        try SecretsPayload.setProviderSettings([:], in: &entries)
+        XCTAssertEqual(entries["futureEntry"], "v")
+        XCTAssertEqual(SecretsPayload.providerSettings(in: entries), .loaded([:]))
+    }
+
+    func test_providerSettingsSkipsUnknownProviderAndBadEntry() {
+        let raw = #"{"version":1,"providers":{"Claude":{"baseURL":"u","model":"m"},"Bogus":{"baseURL":"u","model":"m"},"DeepL":{"baseURL":5}}}"#
+        let entries = [SecretsPayload.providerSettingsEntry: raw]
+        XCTAssertEqual(SecretsPayload.providerSettings(in: entries),
+                       .loaded([.claude: ProviderConnectionSettings(baseURL: "u", model: "m", referer: nil, region: nil)]))
+    }
+
+    func test_corruptProviderSettingsEntryIsUnavailable() {
+        XCTAssertEqual(SecretsPayload.providerSettings(in: [SecretsPayload.providerSettingsEntry: "not json"]), .unavailable)
+    }
+
+    func test_legacyFlatArrayProviderBlobDecodes() throws {
+        // The UserDefaults blob written by v0.3.17 and older used a flat [key, value, ...] array.
+        let json = #"["Claude",{"baseURL":"u","model":"m"},"DeepL",{"baseURL":"","model":""}]"#
+        let decoded = try JSONDecoder().decode(ProviderKeyedDictionary<ProviderConnectionSettings>.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.values.keys.sorted { $0.rawValue < $1.rawValue }, [.claude, .deepl])
+    }
+
+    // MARK: ProviderSettingsMigration
+
+    func test_migrate_unavailableKeepsLegacyAndTouchesNothing() {
+        let plan = ProviderSettingsMigration.plan(secure: .unavailable, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+    }
+
+    func test_migrate_unavailableWithoutLegacyUsesDefaults() {
+        let plan = ProviderSettingsMigration.plan(secure: .unavailable, legacy: nil)
+        XCTAssertEqual(plan, .init(providers: nil, writeSecure: false, clearLegacy: false))
+    }
+
+    func test_migrate_absentWithLegacyWritesThenClears() {
+        let plan = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: true, clearLegacy: true))
+    }
+
+    func test_migrate_absentWithoutLegacyDoesNothing() {
+        let plan = ProviderSettingsMigration.plan(secure: .absent, legacy: nil)
+        XCTAssertEqual(plan, .init(providers: nil, writeSecure: false, clearLegacy: false))
+    }
+
+    func test_migrate_loadedWithoutLegacyIsIdempotent() {
+        let plan = ProviderSettingsMigration.plan(secure: .loaded([.claude: claude]), legacy: nil)
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+    }
+
+    func test_migrate_loadedEqualToLegacyOnlyClearsLegacy() {
+        let plan = ProviderSettingsMigration.plan(secure: .loaded([.claude: claude]), legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: true))
+    }
+
+    func test_migrate_legacyWinsPerProviderAndFillsGaps() {
+        let newer = ProviderConnectionSettings(baseURL: "https://new", model: "m2", referer: nil, region: nil)
+        let plan = ProviderSettingsMigration.plan(secure: .loaded([.claude: claude, .microsoftTranslator: ms]),
+                                                  legacy: [.claude: newer, .googleCloud: google])
+        XCTAssertEqual(plan.providers, [.claude: newer, .microsoftTranslator: ms, .googleCloud: google])
+        XCTAssertTrue(plan.writeSecure)
+        XCTAssertTrue(plan.clearLegacy)
+    }
+
+    func test_migrate_emptyLegacyMapIsTreatedAsNoLegacy() {
+        // After migration the UserDefaults blob keeps an empty `providers` map for older builds.
+        XCTAssertEqual(ProviderSettingsMigration.plan(secure: .loaded([.claude: claude]), legacy: [:]),
+                       .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+        XCTAssertEqual(ProviderSettingsMigration.plan(secure: .absent, legacy: [:]),
+                       .init(providers: nil, writeSecure: false, clearLegacy: false))
+    }
+
+    func test_emptyProvidersMapEncodesAsObjectAndDecodesEmpty() throws {
+        let data = try JSONEncoder().encode(ProviderKeyedDictionary<ProviderConnectionSettings>([:]))
+        XCTAssertEqual(String(data: data, encoding: .utf8), "{}")
+        let decoded = try JSONDecoder().decode(ProviderKeyedDictionary<ProviderConnectionSettings>.self, from: data)
+        XCTAssertTrue(decoded.values.isEmpty)
+    }
+
+    // MARK: Write-before-clear (ProviderSettingsMigration.outcome)
+
+    func test_outcome_failedSecureWriteKeepsLegacy() {
+        let plan = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .absent, secureWriteSucceeded: false)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .secureWriteFailedKeepingLegacy))
+    }
+
+    func test_outcome_successfulSecureWritePermitsClearing() {
+        let plan = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .absent, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: true, mayClearLegacy: true, event: .movedToSecureStore))
+    }
+
+    func test_outcome_failedMergeWriteKeepsLegacyEvenWhenSecureWasLoaded() {
+        let newer = ProviderConnectionSettings(baseURL: "https://new", model: "m2", referer: nil, region: nil)
+        let secure = SecureProviderSettings.loaded([.claude: claude])
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: newer])
+        XCTAssertTrue(plan.writeSecure)
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: false)
+        XCTAssertFalse(outcome.mayClearLegacy)
+        XCTAssertFalse(outcome.providersInSecureStore)
+    }
+
+    func test_outcome_noWriteNeededIgnoresWriteResult() {
+        let secure = SecureProviderSettings.loaded([.claude: claude])
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])
+        XCTAssertFalse(plan.writeSecure)
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: true, mayClearLegacy: true, event: .none))
+    }
+
+    func test_outcome_unavailableSecureNeverClearsOrTrusts() {
+        let plan = ProviderSettingsMigration.plan(secure: .unavailable, legacy: [.claude: claude])
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .unavailable, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .none))
+    }
+
+    // MARK: ProviderOverrides (secure store unavailable)
+
+    func test_overrides_unavailableStoreWithoutLegacyPersistsNoDefaults() {
+        // Secure store unreadable, blob had an empty map: the in-memory values are generated defaults.
+        let overrides = ProviderOverrides(legacy: [:])
+        XCTAssertTrue(overrides.legacyBlobEntries.isEmpty)
+        XCTAssertTrue(ProviderOverrides(legacy: nil).legacyBlobEntries.isEmpty)
+        XCTAssertNil(overrides.reconciled(with: .unavailable))
+    }
+
+    func test_overrides_defaultsNeverOverrideCustomSettingsOnceStoreIsReadable() {
+        let custom = ProviderConnectionSettings(baseURL: "https://custom", model: "mine", referer: nil, region: nil)
+        let overrides = ProviderOverrides(legacy: nil)
+        XCTAssertEqual(overrides.reconciled(with: .loaded([.claude: custom, .deepl: ms])), [.claude: custom, .deepl: ms])
+    }
+
+    func test_overrides_editWinsOnlyForEditedProvider() {
+        let custom = ProviderConnectionSettings(baseURL: "https://custom", model: "mine", referer: nil, region: nil)
+        let generated = ProviderConnectionSettings(baseURL: "https://def", model: "d", referer: nil, region: nil)
+        let edited = ProviderConnectionSettings(baseURL: "https://edited", model: "e", referer: nil, region: nil)
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: generated, for: .deepl)
+        XCTAssertEqual(overrides.legacyBlobEntries, [.deepl: edited])
+        // Only the edited provider changes; its untouched fields (region) keep the stored value.
+        let expectedDeepL = ProviderConnectionSettings(baseURL: "https://edited", model: "e", referer: nil, region: "westeurope")
+        XCTAssertEqual(overrides.reconciled(with: .loaded([.claude: custom, .deepl: ms])), [.claude: custom, .deepl: expectedDeepL])
+        XCTAssertEqual(overrides.reconciled(with: .absent), [.deepl: edited])
+        XCTAssertNil(overrides.reconciled(with: .unavailable))
+    }
+
+    func test_overrides_editOfOneFieldTracksOnlyThatField() {
+        // Untrusted store: the draft was built from generated defaults; the user changes just the model.
+        let generated = ProviderConnectionSettings(baseURL: "https://api.anthropic.com", model: "default-model", referer: nil, region: nil)
+        var edited = generated
+        edited.model = "my-model"
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: generated, for: .claude)
+        XCTAssertEqual(overrides.entries[.claude]?.fields, [.model])
+
+        // Later the store is readable and holds custom values for the other fields: they survive.
+        let stored = ProviderConnectionSettings(baseURL: "https://proxy.example", model: "stored-model", referer: "https://r", region: "eu")
+        let merged = overrides.reconciled(with: .loaded([.claude: stored]))
+        XCTAssertEqual(merged?[.claude], ProviderConnectionSettings(baseURL: "https://proxy.example", model: "my-model", referer: "https://r", region: "eu"))
+    }
+
+    func test_overrides_noOpEditTracksNothing() {
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(claude, comparedTo: claude, for: .claude)
+        XCTAssertTrue(overrides.isEmpty)
+        XCTAssertTrue(overrides.legacyBlobEntries.isEmpty)
+        XCTAssertNil(overrides.fieldMasksForBlob)
+    }
+
+    func test_overrides_clearingAFieldIsAGenuineEdit() {
+        var edited = google
+        edited.referer = nil
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: google, for: .googleCloud)
+        XCTAssertEqual(overrides.entries[.googleCloud]?.fields, [.referer])
+        let merged = overrides.reconciled(with: .loaded([.googleCloud: google]))
+        XCTAssertNil(merged?[.googleCloud]?.referer)
+        XCTAssertEqual(merged?[.googleCloud]?.baseURL, google.baseURL)
+    }
+
+    func test_overrides_successiveEditsAccumulateFields() {
+        let base = ProviderConnectionSettings(baseURL: "u", model: "m", referer: nil, region: nil)
+        var step1 = base
+        step1.model = "m2"
+        var step2 = step1
+        step2.region = "eu"
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(step1, comparedTo: base, for: .microsoftTranslator)
+        overrides.recordEdit(step2, comparedTo: step1, for: .microsoftTranslator)
+        XCTAssertEqual(overrides.entries[.microsoftTranslator]?.fields, [.model, .region])
+    }
+
+    func test_overrides_fieldMasksSurviveTheBlobRoundTrip() {
+        let generated = ProviderConnectionSettings(baseURL: "u", model: "m", referer: nil, region: nil)
+        var edited = generated
+        edited.model = "m2"
+        var overrides = ProviderOverrides(legacy: nil)
+        overrides.recordEdit(edited, comparedTo: generated, for: .claude)
+        // What save() writes, what the next launch reads back.
+        let reloaded = ProviderOverrides(legacy: overrides.legacyBlobEntries, fieldMasks: overrides.fieldMasksForBlob)
+        XCTAssertEqual(reloaded, overrides)
+        // Next launch with a readable store: the plan keeps the stored custom fields.
+        let stored = ProviderConnectionSettings(baseURL: "https://custom", model: "stored", referer: nil, region: nil)
+        let plan = ProviderSettingsMigration.plan(secure: .loaded([.claude: stored]), overrides: reloaded)
+        XCTAssertEqual(plan.providers?[.claude], ProviderConnectionSettings(baseURL: "https://custom", model: "m2", referer: nil, region: nil))
+        XCTAssertTrue(plan.writeSecure)
+        XCTAssertTrue(plan.clearLegacy)
+    }
+
+    func test_overrides_maskWithOnlyUnknownFieldsOverridesNothing() {
+        let overrides = ProviderOverrides(legacy: [.claude: claude], fieldMasks: [.claude: ["futureField"]])
+        XCTAssertTrue(overrides.isEmpty)
+    }
+
+    func test_overrides_realLegacyMapStillMigratesAndIsIdempotent() {
+        let legacy: [ProviderType: ProviderConnectionSettings] = [.claude: claude, .googleCloud: google]
+        var overrides = ProviderOverrides(legacy: legacy)
+        XCTAssertEqual(overrides.legacyBlobEntries, legacy)
+        // Secure store readable and empty: the legacy data is written as-is.
+        XCTAssertEqual(overrides.reconciled(with: .absent), legacy)
+        // After a successful write the overrides are cleared; a second pass changes nothing.
+        overrides.clear()
+        XCTAssertTrue(overrides.legacyBlobEntries.isEmpty)
+        XCTAssertEqual(overrides.reconciled(with: .loaded(legacy)), legacy)
+    }
+
+    // MARK: Quarantined secrets.dat
+
+    func test_quarantined_isNeverTrusted() {
+        XCTAssertFalse(SecureProviderSettings.quarantined.isTrusted)
+        XCTAssertFalse(SecureProviderSettings.unavailable.isTrusted)
+        XCTAssertTrue(SecureProviderSettings.absent.isTrusted)
+        XCTAssertTrue(SecureProviderSettings.loaded([:]).isTrusted)
+    }
+
+    func test_quarantined_migratedProfileKeepsDefaultsAndClearsNothing() {
+        // Already migrated: the legacy blob is empty and the real settings only lived in the quarantined file.
+        let plan = ProviderSettingsMigration.plan(secure: .quarantined, legacy: [:])
+        XCTAssertEqual(plan, .init(providers: nil, writeSecure: false, clearLegacy: false))
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .quarantined, secureWriteSucceeded: true)
+        XCTAssertEqual(outcome, .init(providersInSecureStore: false, mayClearLegacy: false, event: .none))
+    }
+
+    func test_quarantined_doesNotMigrateOrClearRealLegacyData() {
+        let plan = ProviderSettingsMigration.plan(secure: .quarantined, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+        let outcome = ProviderSettingsMigration.outcome(plan: plan, secure: .quarantined, secureWriteSucceeded: true)
+        XCTAssertFalse(outcome.providersInSecureStore)
+        XCTAssertFalse(outcome.mayClearLegacy)
+    }
+
+    func test_quarantined_onlyADeliberateEditRestartsTheStore() {
+        var overrides = ProviderOverrides(legacy: nil)
+        XCTAssertNil(overrides.reconciled(with: .quarantined))
+        var edited = claude
+        edited.model = "new"
+        overrides.recordEdit(edited, comparedTo: claude, for: .claude)
+        XCTAssertEqual(overrides.reconciled(with: .quarantined), [.claude: edited])
+    }
+
+    func test_quarantined_isNotAbsent() {
+        // `absent` migrates and clears legacy data; `quarantined` must differ in exactly that.
+        let overrides = ProviderOverrides(legacy: [.claude: claude])
+        XCTAssertTrue(ProviderSettingsMigration.plan(secure: .absent, overrides: overrides).clearLegacy)
+        XCTAssertFalse(ProviderSettingsMigration.plan(secure: .quarantined, overrides: overrides).clearLegacy)
+    }
+
+    func test_quarantineMarker_missingEntryIsQuarantinedNotAbsent() {
+        // Restart, or API keys re-entered into a fresh file: keys only, no providerSettings.v1 entry yet.
+        let keysOnly = ["apiKey.Claude": "sk"]
+        XCTAssertEqual(SecretsPayload.providerSettings(in: keysOnly, lostToQuarantine: true), .quarantined)
+        XCTAssertEqual(SecretsPayload.providerSettings(in: [:], lostToQuarantine: true), .quarantined)
+        XCTAssertEqual(SecretsPayload.providerSettings(in: keysOnly, lostToQuarantine: false), .absent)
+    }
+
+    func test_quarantineMarker_presentEntryBecomesLoadedAgain() throws {
+        var entries = ["apiKey.Claude": "sk"]
+        try SecretsPayload.setProviderSettings([.claude: claude], in: &entries)
+        XCTAssertEqual(SecretsPayload.providerSettings(in: entries, lostToQuarantine: true), .loaded([.claude: claude]))
+    }
+
+    func test_quarantineMarker_doesNotMaskUnavailable() {
+        let corrupt = [SecretsPayload.providerSettingsEntry: "not json"]
+        XCTAssertEqual(SecretsPayload.providerSettings(in: corrupt, lostToQuarantine: true), .unavailable)
+    }
+
+    func test_quarantineMarker_legacyDataSurvivesTheRestartPath() {
+        // Restart after quarantine with real legacy data still in UserDefaults: nothing is migrated or cleared.
+        let secure = SecretsPayload.providerSettings(in: ["apiKey.Claude": "sk"], lostToQuarantine: true)
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+        XCTAssertFalse(ProviderSettingsMigration.outcome(plan: plan, secure: secure, secureWriteSucceeded: true).mayClearLegacy)
+    }
+
+    func test_fileState_classifiesBySize() {
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 0), .empty)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 1), .truncated)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 27), .truncated)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 28), .sealed)
+        XCTAssertEqual(SecretsPayload.fileState(byteCount: 4096), .sealed)
+        XCTAssertEqual(SecretsPayload.minimumSealedSize, 12 + 16)
+    }
+
+    // MARK: SecretsLoadDecision (the decision flow of SecretStorage.loadAll)
+
+    /// Fakes for the injected side effects; `calls` records the order in which they were invoked.
+    private final class LoadFakes {
+        var calls: [String] = []
+        var decrypt: SecretsDecryptResult = .decrypted
+        var freshKey = false
+        var markerDurable = true
+        var moveSucceeds = true
+
+        func run(byteCount: Int?) -> SecretsLoadOutcome {
+            SecretsLoadDecision.decide(
+                byteCount: byteCount,
+                decrypt: { self.calls.append("decrypt"); return self.decrypt },
+                machineKeyIsFresh: { self.calls.append("freshKey"); return self.freshKey },
+                markQuarantineDurably: { self.calls.append("marker"); return self.markerDurable },
+                moveAside: { self.calls.append("move"); return self.moveSucceeds }
+            )
+        }
+    }
+
+    func test_load_absentOrZeroLengthIsTrustedEmptyWithoutMove() {
+        for size in [nil, 0] as [Int?] {
+            let fakes = LoadFakes()
+            XCTAssertEqual(fakes.run(byteCount: size), .emptyStore)
+            XCTAssertEqual(fakes.calls, [])
+        }
+    }
+
+    func test_load_successfulDecryptIsLoaded() {
+        let fakes = LoadFakes()
+        XCTAssertEqual(fakes.run(byteCount: 100), .loaded)
+        XCTAssertEqual(fakes.calls, ["decrypt"])
+    }
+
+    func test_load_truncatedFileGoesThroughMarkerThenMove() {
+        let fakes = LoadFakes()
+        XCTAssertEqual(fakes.run(byteCount: 10), .quarantinedAndReset)
+        XCTAssertEqual(fakes.calls, ["marker", "move"]) // never decrypts, marker strictly before the move
+    }
+
+    func test_load_undecryptableSealedFileIsQuarantined() {
+        let fakes = LoadFakes()
+        fakes.decrypt = .undecryptable
+        XCTAssertEqual(fakes.run(byteCount: 100), .quarantinedAndReset)
+        XCTAssertEqual(fakes.calls, ["decrypt", "freshKey", "marker", "move"])
+    }
+
+    func test_load_failedMarkerFlushIsUnavailableAndNothingIsMoved() {
+        for size in [10, 100] {
+            let fakes = LoadFakes()
+            fakes.decrypt = .undecryptable
+            fakes.markerDurable = false
+            XCTAssertEqual(fakes.run(byteCount: size), .unavailable)
+            XCTAssertTrue(fakes.calls.contains("marker"))
+            XCTAssertFalse(fakes.calls.contains("move"))
+        }
+    }
+
+    func test_load_failedMoveIsUnavailableNeverAnEmptyStore() {
+        for size in [10, 100] {
+            let fakes = LoadFakes()
+            fakes.decrypt = .undecryptable
+            fakes.moveSucceeds = false
+            XCTAssertEqual(fakes.run(byteCount: size), .unavailable)
+            XCTAssertEqual(fakes.calls.last, "move")
+        }
+    }
+
+    func test_load_freshMachineKeyNeverQuarantines() {
+        let fakes = LoadFakes()
+        fakes.decrypt = .undecryptable
+        fakes.freshKey = true
+        XCTAssertEqual(fakes.run(byteCount: 100), .unavailable)
+        XCTAssertEqual(fakes.calls, ["decrypt", "freshKey"])
+    }
+
+    func test_load_keyDerivationFailureIsUnavailableWithoutQuarantine() {
+        let fakes = LoadFakes()
+        fakes.decrypt = .keyUnavailable
+        XCTAssertEqual(fakes.run(byteCount: 100), .unavailable)
+        XCTAssertEqual(fakes.calls, ["decrypt"])
+    }
+
+    func test_quarantinedProviderSettingsAfterTruncatedFileKeepLegacyData() {
+        // The state the load flow leaves behind (marker set, empty store) must not migrate or clear legacy data.
+        let secure = SecretsPayload.providerSettings(in: [:], lostToQuarantine: true)
+        XCTAssertEqual(secure, .quarantined)
+        let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])
+        XCTAssertEqual(plan, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+    }
+
+    func test_migrate_secondRunAfterSuccessIsNoop() {
+        let first = ProviderSettingsMigration.plan(secure: .absent, legacy: [.claude: claude])
+        let second = ProviderSettingsMigration.plan(secure: .loaded(first.providers ?? [:]), legacy: nil)
+        XCTAssertEqual(second, .init(providers: [.claude: claude], writeSecure: false, clearLegacy: false))
+    }
+}

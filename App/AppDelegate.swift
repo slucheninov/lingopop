@@ -94,7 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.historyStore.iCloudEnabled = enabled
                 self.usageStore.iCloudEnabled = enabled
                 if enabled {
-                    self.settingsStore.reloadFromCloudIfNewer()
                     self.historyStore.reloadFromCloudIfNewer()
                     self.usageStore.reloadFromCloudIfNewer()
                 }

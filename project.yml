@@ -82,6 +82,7 @@ targets:
       - Models/AIOperation.swift
       - Models/ProviderConfig.swift
       - Models/ProviderKeyedDictionary.swift
+      - Models/ProviderSettingsStorage.swift
       - Models/LanguageCodes.swift
       - Models/Languages.swift
       - Models/HotkeyConfig.swift

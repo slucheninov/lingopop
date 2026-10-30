@@ -4713,60 +4713,31 @@
         }
       }
     },
-    "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys are stored locally in an encrypted file. Settings sync between Macs via iCloud Drive." : {
+    "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage statistics, and optionally translation history, can sync between Macs via iCloud Drive." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys are stored locally in an encrypted file. Settings sync between Macs via iCloud Drive."
+            "value" : "Supports Claude, OpenAI, Gemini, Grok, Google Translate, DeepL, and Microsoft Translator. API keys and provider settings are stored locally in an encrypted file. Usage statistics, and optionally translation history, can sync between Macs via iCloud Drive."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Obsługuje Claude, OpenAI, Gemini, Grok, Google Translate, DeepL i Microsoft Translator. Klucze API są przechowywane lokalnie w zaszyfrowanym pliku. Ustawienia synchronizują się między komputerami Mac przez iCloud Drive."
+            "value" : "Obsługuje Claude, OpenAI, Gemini, Grok, Google Translate, DeepL i Microsoft Translator. Klucze API i ustawienia dostawców są przechowywane lokalnie w zaszyfrowanym pliku. Statystyki użycia oraz opcjonalnie historia tłumaczeń mogą synchronizować się między komputerami Mac przez iCloud Drive."
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Підтримує Claude, OpenAI, Gemini, Grok, Google Translate, DeepL і Microsoft Translator. Ключі API зберігаються локально в зашифрованому файлі. Налаштування синхронізуються між Mac через iCloud Drive."
+            "value" : "Підтримує Claude, OpenAI, Gemini, Grok, Google Translate, DeepL і Microsoft Translator. Ключі API та налаштування провайдерів зберігаються локально в зашифрованому файлі. Статистика використання та, за бажанням, історія перекладів можуть синхронізуватися між Mac через iCloud Drive."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unterstützt Claude, OpenAI, Gemini, Grok, Google Translate, DeepL und Microsoft Translator. API-Schlüssel werden lokal in einer verschlüsselten Datei gespeichert. Einstellungen werden über iCloud Drive zwischen Macs synchronisiert."
-          }
-        }
-      }
-    },
-    "Sync settings via iCloud Drive" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sync settings via iCloud Drive"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Synchronizuj ustawienia przez iCloud Drive"
-          }
-        },
-        "uk" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Синхронізувати налаштування через iCloud Drive"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einstellungen über iCloud Drive synchronisieren"
+            "value" : "Unterstützt Claude, OpenAI, Gemini, Grok, Google Translate, DeepL und Microsoft Translator. API-Schlüssel und Anbietereinstellungen werden lokal in einer verschlüsselten Datei gespeichert. Nutzungsstatistiken und optional der Übersetzungsverlauf können über iCloud Drive zwischen Macs synchronisiert werden."
           }
         }
       }
@@ -4800,31 +4771,60 @@
         }
       }
     },
-    "Syncs settings between Macs signed into the same Apple ID. API keys stay local per machine." : {
+    "Sync usage statistics via iCloud Drive" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Syncs settings between Macs signed into the same Apple ID. API keys stay local per machine."
+            "value" : "Sync usage statistics via iCloud Drive"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronizuje ustawienia między komputerami Mac zalogowanymi na to samo Apple ID. Klucze API pozostają lokalne na każdym komputerze."
+            "value" : "Synchronizuj statystyki użycia przez iCloud Drive"
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Синхронізує налаштування між Mac, на яких виконано вхід з одним Apple ID. Ключі API залишаються локальними на кожному комп’ютері."
+            "value" : "Синхронізувати статистику використання через iCloud Drive"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronisiert Einstellungen zwischen Macs, die mit derselben Apple-ID angemeldet sind. API-Schlüssel bleiben lokal auf dem jeweiligen Computer."
+            "value" : "Nutzungsstatistik über iCloud Drive synchronisieren"
+          }
+        }
+      }
+    },
+    "Syncs usage statistics and, if enabled, translation history between Macs signed into the same Apple ID. Settings, provider settings and API keys stay local on each Mac." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncs usage statistics and, if enabled, translation history between Macs signed into the same Apple ID. Settings, provider settings and API keys stay local on each Mac."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronizuje statystyki użycia oraz, jeśli włączono, historię tłumaczeń między komputerami Mac zalogowanymi na to samo Apple ID. Ustawienia, ustawienia dostawców i klucze API pozostają lokalne na każdym komputerze Mac."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронізує статистику використання та, якщо ввімкнено, історію перекладів між Mac, на яких виконано вхід з одним Apple ID. Налаштування, налаштування провайдерів і ключі API залишаються локальними на кожному Mac."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisiert Nutzungsstatistiken und, falls aktiviert, den Übersetzungsverlauf zwischen Macs, die mit derselben Apple-ID angemeldet sind. Einstellungen, Anbietereinstellungen und API-Schlüssel bleiben lokal auf dem jeweiligen Mac."
           }
         }
       }
