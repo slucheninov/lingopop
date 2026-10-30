@@ -27,6 +27,10 @@ struct PopupLayout {
     static let cornerRadius: CGFloat = 12
     /// Characters of the original text shown in the loading preview.
     static let previewCharacterLimit = 120
+    /// Result/OCR text of at least this many characters counts as "long": the action row
+    /// then prefers full text labels on every button; shorter text keeps only the first two
+    /// buttons labelled and shows the rest icon-only (see `ActionRowMode`).
+    static let longTextCharacterThreshold = 120
     /// Hover delay before the custom button tooltip appears (500 ms).
     static let tooltipDelayNanoseconds: UInt64 = 500_000_000
 

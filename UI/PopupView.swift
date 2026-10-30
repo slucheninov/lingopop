@@ -41,8 +41,22 @@ struct PopupView: View {
         let retry = state.availableRetryProviders.isEmpty ? nil : String(localized: "Retry")
         var chevronMenus = 0
         if case .ocr = state.phase, !state.availableTranslateProviders.isEmpty { chevronMenus = 1 }
-        let row = ActionRowMetrics.width(titles: titles, menuTitle: retry, chevronMenus: chevronMenus)
+        // Size for the mode the action row tries first (it falls back inside the bar).
+        let mode = ActionRowMode.preferred(
+            characterCount: textLength,
+            threshold: PopupLayout.longTextCharacterThreshold,
+            buttonCount: titles.count + (retry == nil ? 0 : 1)
+        )
+        let row = ActionRowMetrics.width(titles: titles, menuTitle: retry, chevronMenus: chevronMenus, mode: mode)
         return min(PopupLayout.maxWidth, max(base, row))
+    }
+
+    private var textLength: Int {
+        switch state.phase {
+        case .result(let r): return r.translated.count
+        case .ocr(let text): return text.count
+        default: return 0
+        }
     }
 
     private var dragHandle: some View {
@@ -124,18 +138,32 @@ private struct OCRContent: View {
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 8)
-        ViewThatFits(in: .horizontal) {
-            ocrRow(iconOnly: false)
-            ocrRow(iconOnly: true)
+        // Copy + Translate stay labelled; Retry follows the text length (see `ActionRowMode`).
+        let preferred = ActionRowMode.preferred(
+            characterCount: text.count,
+            threshold: PopupLayout.longTextCharacterThreshold,
+            buttonCount: 2 + (state.availableRetryProviders.isEmpty ? 0 : 1)
+        )
+        if preferred == .full {
+            ViewThatFits(in: .horizontal) {
+                ocrRow(.full)
+                ocrRow(.mixed)
+                ocrRow(.compact)
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                ocrRow(.mixed)
+                ocrRow(.compact)
+            }
         }
     }
 
-    private func ocrRow(iconOnly: Bool) -> some View {
+    private func ocrRow(_ mode: ActionRowMode) -> some View {
         HStack(spacing: 8) {
-            PopupActionButton(title: "Copy", systemImage: "doc.on.doc", action: { copyToPasteboard(text) }, iconOnly: iconOnly)
-            translateControls(iconOnly: iconOnly)
+            PopupActionButton(title: "Copy", systemImage: "doc.on.doc", action: { copyToPasteboard(text) }, iconOnly: mode.isIconOnly(at: 0))
+            translateControls(iconOnly: mode.isIconOnly(at: 1))
             Spacer(minLength: 0)
-            RetryMenu(state: state, iconOnly: iconOnly)
+            RetryMenu(state: state, iconOnly: mode.isIconOnly(at: 2))
         }
     }
 
@@ -302,32 +330,54 @@ private struct ResultActionBar: View {
     let result: TranslationResult
 
     var body: some View {
-        // Full labels when they fit; otherwise icon-only (tooltips keep the names)
-        // instead of letting SwiftUI squeeze each title down to a single letter.
-        ViewThatFits(in: .horizontal) {
-            row(iconOnly: false)
-            row(iconOnly: true)
+        // Copy + the next button keep their labels; the rest are icon-only for short text
+        // and labelled for long text when they fit. Every fallback step is icon-based
+        // (tooltips keep the names) instead of letting SwiftUI squeeze each title down to
+        // a single letter.
+        let hasReplace = result.operation != .screenTranslate
+        let hasExplain = result.operation != .explain
+        let preferred = ActionRowMode.preferred(
+            characterCount: result.translated.count,
+            threshold: PopupLayout.longTextCharacterThreshold,
+            buttonCount: 2 + (hasReplace ? 1 : 0) + (hasExplain ? 1 : 0) + (state.availableRetryProviders.isEmpty ? 0 : 1)
+        )
+        if preferred == .full {
+            ViewThatFits(in: .horizontal) {
+                row(.full)
+                row(.mixed)
+                row(.compact)
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                row(.mixed)
+                row(.compact)
+            }
         }
     }
 
-    private func row(iconOnly: Bool) -> some View {
-        HStack(spacing: 8) {
-            PopupActionButton(title: "Copy", systemImage: "doc.on.doc", action: { copyToPasteboard(result.translated) }, iconOnly: iconOnly)
-            if result.operation != .screenTranslate {
+    /// Row order (and so the `ActionRowMode` indices): Copy, Replace (unless Screen
+    /// Translate), Rewrite, Explain (unless the result is an explanation), Retry menu.
+    private func row(_ mode: ActionRowMode) -> some View {
+        let hasReplace = result.operation != .screenTranslate
+        let rewriteIndex = hasReplace ? 2 : 1
+        return HStack(spacing: 8) {
+            PopupActionButton(title: "Copy", systemImage: "doc.on.doc", action: { copyToPasteboard(result.translated) }, iconOnly: mode.isIconOnly(at: 0))
+            if hasReplace {
                 PopupActionButton(title: "Replace", systemImage: "arrow.uturn.left", action: {
                     state.actions?.replace(with: result.translated)
-                }, iconOnly: iconOnly)
+                }, iconOnly: mode.isIconOnly(at: 1))
             }
             PopupActionButton(title: "Rewrite", systemImage: "wand.and.stars", action: {
                 state.actions?.rewrite(result.translated)
-            }, iconOnly: iconOnly)
+            }, iconOnly: mode.isIconOnly(at: rewriteIndex))
             if result.operation != .explain {
                 PopupActionButton(title: "Explain", systemImage: "text.magnifyingglass", action: {
                     state.actions?.explain(result.translated)
-                }, iconOnly: iconOnly)
+                }, iconOnly: mode.isIconOnly(at: rewriteIndex + 1))
             }
             Spacer(minLength: 0)
-            RetryMenu(state: state, iconOnly: iconOnly)
+            // Retry always follows at least two plain buttons, so it takes the non-prefix rule.
+            RetryMenu(state: state, iconOnly: mode.isIconOnly(at: ActionRowMode.labelledPrefix))
         }
     }
 }
