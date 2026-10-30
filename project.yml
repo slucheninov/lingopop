@@ -78,6 +78,7 @@ targets:
       - Core/PromptBuilder.swift
       - Core/UsagePricing.swift
       - Core/ActionRowMetrics.swift
+      - Core/AppLanguage.swift
       - Models/AIOperation.swift
       - Models/ProviderConfig.swift
       - Models/ProviderKeyedDictionary.swift

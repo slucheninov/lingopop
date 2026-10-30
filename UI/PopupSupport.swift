@@ -81,7 +81,7 @@ struct PopupActionButton: View {
     let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
-    /// Icon-only fallback for rows too narrow for the localized titles (tooltip keeps the name).
+    /// Icon-only variant chosen by the row's `ActionRowMode` (tooltip keeps the name).
     var iconOnly = false
 
     var body: some View {
