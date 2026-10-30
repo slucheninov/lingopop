@@ -255,73 +255,77 @@ enum SecretStorage {
     private static func loadAll() -> LoadResult {
         if let cached = cachedStore() { return .available(cached) }
         let url = fileURL
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            return .available([:])
-        }
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            log.error("Failed to read secrets.dat: \(error.localizedDescription, privacy: .public)")
-            return .unavailable
-        }
-        switch SecretsPayload.fileState(byteCount: data.count) {
-        case .empty:
-            // Nothing in it to lose or to back up: same as no file.
-            log.error("secrets.dat is empty (0 bytes); treating as no file")
-            return .available([:])
-        case .truncated:
-            // Not a sealed box: damaged. Never overwrite it silently; quarantine it like an undecryptable file.
-            log.error("secrets.dat is truncated (\(data.count) bytes); quarantining it")
-            return quarantineAndResetStore(at: url)
-        case .sealed:
-            break
-        }
-        let key: SymmetricKey
-        do {
-            key = try symmetricKey()
-        } catch {
-            log.error("Failed to derive secrets key: \(error.localizedDescription, privacy: .public)")
-            return .unavailable
-        }
-        if let store = decrypt(data, using: key) {
-            setCachedStore(store)
-            return .available(store)
-        }
-        // Legacy migration: files written before the HKDF/salt scheme.
-        if let store = decrypt(data, using: legacySymmetricKey()) {
-            log.info("Migrating secrets.dat from legacy key scheme")
-            if !saveAll(store) {
-                log.error("Failed to re-save migrated secrets.dat")
+        var data: Data?
+        if FileManager.default.fileExists(atPath: url.path) {
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                log.error("Failed to read secrets.dat: \(error.localizedDescription, privacy: .public)")
+                return .unavailable
             }
-            return .available(store)
         }
-        // A freshly generated machine.key can never match an existing file; don't destroy it.
-        lock.lock()
-        let freshKey = machineKeyWasFreshlyGenerated
-        lock.unlock()
-        if freshKey {
-            log.error("secrets.dat can't be decrypted: machine identifier unavailable (fresh fallback key)")
-            return .unavailable
+        if let data {
+            switch SecretsPayload.fileState(byteCount: data.count) {
+            case .empty: log.error("secrets.dat is empty (0 bytes); treating as no file")
+            case .truncated: log.error("secrets.dat is truncated (\(data.count) bytes); quarantining it")
+            case .sealed: break
+            }
         }
-        // Neither scheme works: move the file aside so the user can re-enter keys.
-        return quarantineAndResetStore(at: url)
-    }
-
-    /// Moves an unreadable `secrets.dat` aside and starts an empty store so API keys can be re-entered.
-    /// Never moves the file without a durable marker: otherwise a crash or power loss in between would leave an
-    /// empty store with no marker, and the next launch would migrate / clear legacy provider settings unprompted.
-    /// If the marker or the move fails, the original file stays in place and the store is `.unavailable`, so
-    /// callers refuse writes instead of overwriting the only copy.
-    private static func quarantineAndResetStore(at url: URL) -> LoadResult {
-        guard markQuarantineDurably() else {
-            log.error("Could not persist the quarantine marker; leaving the unreadable secrets.dat in place for this launch")
-            return .unavailable
+        var store: [String: String] = [:]
+        // All branching lives in the pure `SecretsLoadDecision`; this function only supplies the side effects and
+        // acts on the outcome. The marker is flushed before the file is moved aside, and a failed flush or move
+        // yields `.unavailable`, never an empty available store.
+        let outcome = SecretsLoadDecision.decide(
+            byteCount: data?.count,
+            decrypt: {
+                guard let data else { return .undecryptable }
+                let key: SymmetricKey
+                do {
+                    key = try symmetricKey()
+                } catch {
+                    log.error("Failed to derive secrets key: \(error.localizedDescription, privacy: .public)")
+                    return .keyUnavailable
+                }
+                if let decrypted = decrypt(data, using: key) {
+                    store = decrypted
+                    setCachedStore(decrypted)
+                    return .decrypted
+                }
+                // Legacy migration: files written before the HKDF/salt scheme.
+                if let legacy = decrypt(data, using: legacySymmetricKey()) {
+                    log.info("Migrating secrets.dat from legacy key scheme")
+                    if !saveAll(legacy) {
+                        log.error("Failed to re-save migrated secrets.dat")
+                    }
+                    store = legacy
+                    return .decrypted
+                }
+                return .undecryptable
+            },
+            machineKeyIsFresh: {
+                // A freshly generated machine.key can never match an existing file; don't destroy it.
+                lock.lock()
+                let fresh = machineKeyWasFreshlyGenerated
+                lock.unlock()
+                if fresh {
+                    log.error("secrets.dat can't be decrypted: machine identifier unavailable (fresh fallback key)")
+                }
+                return fresh
+            },
+            markQuarantineDurably: {
+                let ok = markQuarantineDurably()
+                if !ok {
+                    log.error("Could not persist the quarantine marker; leaving the unreadable secrets.dat in place for this launch")
+                }
+                return ok
+            },
+            moveAside: { quarantineUnreadableFile(at: url) }
+        )
+        switch outcome {
+        case .emptyStore, .quarantinedAndReset: return .available([:])
+        case .loaded: return .available(store)
+        case .unavailable: return .unavailable
         }
-        guard quarantineUnreadableFile(at: url) else {
-            return .unavailable
-        }
-        return .available([:])
     }
 
     private static func decrypt(_ data: Data, using key: SymmetricKey) -> [String: String]? {

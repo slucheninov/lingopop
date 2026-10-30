@@ -344,8 +344,92 @@ final class ProviderSettingsStorageTests: XCTestCase {
         XCTAssertEqual(SecretsPayload.minimumSealedSize, 12 + 16)
     }
 
-    func test_truncatedFileIsTreatedLikeQuarantine() {
-        // A truncated file leads to the quarantine path: provider settings are untrusted, nothing migrates or clears.
+    // MARK: SecretsLoadDecision (the decision flow of SecretStorage.loadAll)
+
+    /// Fakes for the injected side effects; `calls` records the order in which they were invoked.
+    private final class LoadFakes {
+        var calls: [String] = []
+        var decrypt: SecretsDecryptResult = .decrypted
+        var freshKey = false
+        var markerDurable = true
+        var moveSucceeds = true
+
+        func run(byteCount: Int?) -> SecretsLoadOutcome {
+            SecretsLoadDecision.decide(
+                byteCount: byteCount,
+                decrypt: { self.calls.append("decrypt"); return self.decrypt },
+                machineKeyIsFresh: { self.calls.append("freshKey"); return self.freshKey },
+                markQuarantineDurably: { self.calls.append("marker"); return self.markerDurable },
+                moveAside: { self.calls.append("move"); return self.moveSucceeds }
+            )
+        }
+    }
+
+    func test_load_absentOrZeroLengthIsTrustedEmptyWithoutMove() {
+        for size in [nil, 0] as [Int?] {
+            let fakes = LoadFakes()
+            XCTAssertEqual(fakes.run(byteCount: size), .emptyStore)
+            XCTAssertEqual(fakes.calls, [])
+        }
+    }
+
+    func test_load_successfulDecryptIsLoaded() {
+        let fakes = LoadFakes()
+        XCTAssertEqual(fakes.run(byteCount: 100), .loaded)
+        XCTAssertEqual(fakes.calls, ["decrypt"])
+    }
+
+    func test_load_truncatedFileGoesThroughMarkerThenMove() {
+        let fakes = LoadFakes()
+        XCTAssertEqual(fakes.run(byteCount: 10), .quarantinedAndReset)
+        XCTAssertEqual(fakes.calls, ["marker", "move"]) // never decrypts, marker strictly before the move
+    }
+
+    func test_load_undecryptableSealedFileIsQuarantined() {
+        let fakes = LoadFakes()
+        fakes.decrypt = .undecryptable
+        XCTAssertEqual(fakes.run(byteCount: 100), .quarantinedAndReset)
+        XCTAssertEqual(fakes.calls, ["decrypt", "freshKey", "marker", "move"])
+    }
+
+    func test_load_failedMarkerFlushIsUnavailableAndNothingIsMoved() {
+        for size in [10, 100] {
+            let fakes = LoadFakes()
+            fakes.decrypt = .undecryptable
+            fakes.markerDurable = false
+            XCTAssertEqual(fakes.run(byteCount: size), .unavailable)
+            XCTAssertTrue(fakes.calls.contains("marker"))
+            XCTAssertFalse(fakes.calls.contains("move"))
+        }
+    }
+
+    func test_load_failedMoveIsUnavailableNeverAnEmptyStore() {
+        for size in [10, 100] {
+            let fakes = LoadFakes()
+            fakes.decrypt = .undecryptable
+            fakes.moveSucceeds = false
+            XCTAssertEqual(fakes.run(byteCount: size), .unavailable)
+            XCTAssertEqual(fakes.calls.last, "move")
+        }
+    }
+
+    func test_load_freshMachineKeyNeverQuarantines() {
+        let fakes = LoadFakes()
+        fakes.decrypt = .undecryptable
+        fakes.freshKey = true
+        XCTAssertEqual(fakes.run(byteCount: 100), .unavailable)
+        XCTAssertEqual(fakes.calls, ["decrypt", "freshKey"])
+    }
+
+    func test_load_keyDerivationFailureIsUnavailableWithoutQuarantine() {
+        let fakes = LoadFakes()
+        fakes.decrypt = .keyUnavailable
+        XCTAssertEqual(fakes.run(byteCount: 100), .unavailable)
+        XCTAssertEqual(fakes.calls, ["decrypt"])
+    }
+
+    func test_quarantinedProviderSettingsAfterTruncatedFileKeepLegacyData() {
+        // The state the load flow leaves behind (marker set, empty store) must not migrate or clear legacy data.
         let secure = SecretsPayload.providerSettings(in: [:], lostToQuarantine: true)
         XCTAssertEqual(secure, .quarantined)
         let plan = ProviderSettingsMigration.plan(secure: secure, legacy: [.claude: claude])

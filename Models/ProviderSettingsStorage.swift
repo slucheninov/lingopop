@@ -107,6 +107,68 @@ enum SecretsPayload {
     }
 }
 
+/// What decrypting an existing, large-enough `secrets.dat` gave.
+enum SecretsDecryptResult: Equatable {
+    case decrypted
+    /// Neither key scheme opens the file.
+    case undecryptable
+    /// The key could not even be derived (e.g. salt / machine key problems): nothing is known about the file.
+    case keyUnavailable
+}
+
+/// Result of loading `secrets.dat`.
+enum SecretsLoadOutcome: Equatable {
+    /// No file, or a zero-byte file: a trusted empty store, nothing moved.
+    case emptyStore
+    /// Decrypted successfully.
+    case loaded
+    /// The unreadable file was moved aside behind a durable marker; the key store starts empty (keys can be re-entered).
+    case quarantinedAndReset
+    /// Nothing may be read or written: callers refuse writes and the original file is left untouched.
+    case unavailable
+}
+
+/// The decision flow of `SecretStorage.loadAll()` for a file that exists (or not), with the side effects injected so
+/// the real flow is unit-testable in the host-less target. `loadAll()` acts only on the returned outcome.
+///
+/// Invariants: a file is never moved aside without a durable quarantine marker (marker first, move second); if the
+/// marker or the move fails the result is `.unavailable` and never an empty available store; a freshly generated
+/// machine key never quarantines (it can't match an existing file, which must be preserved).
+enum SecretsLoadDecision {
+    /// - Parameters:
+    ///   - byteCount: size of the existing file, nil if there is none.
+    ///   - decrypt: tries both key schemes (only called for a file big enough to be a sealed box).
+    ///   - machineKeyIsFresh: whether the machine key was generated in this run (only asked after a failed decrypt).
+    ///   - markQuarantineDurably: persists the quarantine marker; false if it could not be made durable.
+    ///   - moveAside: moves the file to a backup; false if that failed.
+    static func decide(
+        byteCount: Int?,
+        decrypt: () -> SecretsDecryptResult,
+        machineKeyIsFresh: () -> Bool,
+        markQuarantineDurably: () -> Bool,
+        moveAside: () -> Bool
+    ) -> SecretsLoadOutcome {
+        func quarantine() -> SecretsLoadOutcome {
+            guard markQuarantineDurably() else { return .unavailable }
+            guard moveAside() else { return .unavailable }
+            return .quarantinedAndReset
+        }
+        guard let byteCount else { return .emptyStore }
+        switch SecretsPayload.fileState(byteCount: byteCount) {
+        case .empty:
+            return .emptyStore
+        case .truncated:
+            return quarantine()
+        case .sealed:
+            switch decrypt() {
+            case .decrypted: return .loaded
+            case .keyUnavailable: return .unavailable
+            case .undecryptable: return machineKeyIsFresh() ? .unavailable : quarantine()
+            }
+        }
+    }
+}
+
 /// Pure decision logic for moving provider settings from the legacy UserDefaults blob into `secrets.dat`.
 ///
 /// Invariant: the legacy copy is removed only after the secure store is known to hold the data, so a failed
